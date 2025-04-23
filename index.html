@@ -65,7 +65,7 @@
   <div id="priceLabel">السعر الحالي: --</div>
   <canvas id="chart" width="900" height="400"></canvas>
   <div id="breakout"></div>
-  <h3 id="orderbookTitle">دفتر تمركز الحيتان</h3>
+  <h3 id="orderbookTitle">إجمالي المشترين والبائعين</h3>
   <div id="orderbook"></div>
   <h3 id="ratiosTitle">نسبة الشراء والبيع (٪)</h3>
   <div id="ratios"></div>
@@ -80,7 +80,7 @@
         title: "الرسم البياني للعملة",
         search: "بحث",
         currentPrice: "السعر الحالي: ",
-        orderbookTitle: "دفتر تمركز الحيتان",
+        orderbookTitle: "إجمالي المشترين والبائعين",
         ratiosTitle: "نسبة الشراء والبيع (٪)",
         example: "مثال: BTC",
         breakout: "نسبة الاختراق: "
@@ -89,7 +89,7 @@
         title: "Crypto Chart",
         search: "Search",
         currentPrice: "Current Price: ",
-        orderbookTitle: "Whale Order Book",
+        orderbookTitle: "Total Buyers and Sellers",
         ratiosTitle: "Buy/Sell Ratio (%)",
         example: "Example: BTC",
         breakout: "Breakout Ratio: "
@@ -216,18 +216,21 @@
         });
       }
 
-      fetchOrderBook(currentPair);
+      fetchOrderBookTotal(currentPair);
       fetchRatios(currentPair);
     }
 
-    async function fetchOrderBook(pair) {
-      const res = await fetch(`https://api.binance.com/api/v3/depth?symbol=${pair}&limit=10`);
+    async function fetchOrderBookTotal(pair) {
+      const res = await fetch(`https://api.binance.com/api/v3/depth?symbol=${pair}&limit=100`);
       const data = await res.json();
-      let html = `<strong>${isEnglish ? "Sellers" : "البائعين"}:</strong><br>`;
-      html += data.asks.map(a => `Price: ${a[0]} | Qty: ${a[1]}`).join('<br>');
-      html += `<br><strong>${isEnglish ? "Buyers" : "المشترين"}:</strong><br>`;
-      html += data.bids.map(b => `Price: ${b[0]} | Qty: ${b[1]}`).join('<br>');
-      document.getElementById("orderbook").innerHTML = html;
+
+      let totalBuy = data.bids.reduce((sum, b) => sum + parseFloat(b[1]), 0);
+      let totalSell = data.asks.reduce((sum, a) => sum + parseFloat(a[1]), 0);
+
+      const buyText = (isEnglish ? "Total Buy Quantity: " : "إجمالي كمية الشراء: ") + totalBuy.toFixed(2);
+      const sellText = (isEnglish ? "Total Sell Quantity: " : "إجمالي كمية البيع: ") + totalSell.toFixed(2);
+
+      document.getElementById("orderbook").innerHTML = `<div class="buy">${buyText}</div><div class="sell">${sellText}</div>`;
     }
 
     async function fetchRatios(pair) {
