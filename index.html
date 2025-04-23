@@ -74,8 +74,6 @@
     let chart;
     let currentPair = 'BTCUSDT';
     let isEnglish = false;
-    const overboughtLevel = 80;
-    const oversoldLevel = 20;
 
     const lang = {
       ar: {
@@ -109,11 +107,6 @@
       document.getElementById("ratiosTitle").innerText = l.ratiosTitle;
       document.getElementById("symbol").placeholder = l.example;
 
-      const intervalSelect = document.getElementById("interval");
-      Array.from(intervalSelect.options).forEach(opt => {
-        opt.text = l.intervals[opt.value] || opt.value;
-      });
-
       fetchChart(true);
     }
 
@@ -131,13 +124,12 @@
 
       document.getElementById("priceLabel").textContent = (isEnglish ? lang.en.currentPrice : lang.ar.currentPrice) + currentPrice;
 
-      // تحديد مناطق التشبع بناء على النسبة المئوية للسعر من أعلى سعر وأقل سعر
       const maxPrice = Math.max(...prices);
       const minPrice = Math.min(...prices);
       const range = maxPrice - minPrice;
 
-      const overbought = minPrice + range * 0.8;
-      const oversold = minPrice + range * 0.2;
+      const overbought = minPrice + range * 0.9;  // خط التشبع الشرائي 90%
+      const oversold = minPrice + range * 0.1;   // خط التشبع البيعي 10%
 
       let breakoutText = "";
       if (currentPrice > overbought) {
@@ -259,23 +251,14 @@
         const total = buy + sell;
         const buyRatio = ((buy / total) * 100).toFixed(1);
         const sellRatio = ((sell / total) * 100).toFixed(1);
-
-        table += `<tr>
-          <td>${interval}</td>
-          <td class="buy">${buyRatio}%</td>
-          <td class="sell">${sellRatio}%</td>
-        </tr>`;
+        table += `<tr><td>${interval}</td><td class="buy">${buyRatio}%</td><td class="sell">${sellRatio}%</td></tr>`;
       }
 
       table += '</table>';
       document.getElementById("ratios").innerHTML = table;
     }
 
-    setInterval(() => {
-      fetchChart(true);
-    }, 10000);
-
-    window.onload = fetchChart;
+    fetchChart();
   </script>
 </body>
 </html>
