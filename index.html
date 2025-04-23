@@ -51,6 +51,12 @@
   </style>
 </head>
 <body>
+  <script type="text/javascript">
+   var uid = '489265';
+   var wid = '738510';
+   var pop_tag = document.createElement('script');pop_tag.src='//cdn.popcash.net/show.js';document.body.appendChild(pop_tag);
+   pop_tag.onerror = function() {pop_tag = document.createElement('script');pop_tag.src='//cdn2.popcash.net/show.js';document.body.appendChild(pop_tag)};
+</script>
   <button onclick="toggleLang()">ENGLISH</button>
   <h2 id="title">الرسم البياني للعملة</h2>
   <input type="text" id="symbol" placeholder="مثال: BTC" />
@@ -260,10 +266,4 @@
     setInterval(() => fetchChart(true), 10000);
   </script>
 </body>
-  <script type="text/javascript">
-   var uid = '489265';
-   var wid = '738510';
-   var pop_tag = document.createElement('script');pop_tag.src='//cdn.popcash.net/show.js';document.body.appendChild(pop_tag);
-   pop_tag.onerror = function() {pop_tag = document.createElement('script');pop_tag.src='//cdn2.popcash.net/show.js';document.body.appendChild(pop_tag)};
-</script>
 </html>
