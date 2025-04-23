@@ -48,32 +48,6 @@
     .sell {
       background-color: rgba(255, 0, 0, 0.2);
     }
-
-    /* إعلان منبثق */
-    #adPopup {
-      display: none;
-      position: fixed;
-      top: 30%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: white;
-      padding: 20px;
-      border: 2px solid #333;
-      box-shadow: 0 0 10px rgba(0,0,0,0.5);
-      z-index: 9999;
-    }
-    #adPopup h2 {
-      margin-top: 0;
-      color: #d32f2f;
-    }
-    #adPopup button {
-      margin-top: 15px;
-      padding: 10px;
-      background-color: #d32f2f;
-      color: white;
-      border: none;
-      cursor: pointer;
-    }
   </style>
 </head>
 <body>
@@ -95,13 +69,6 @@
   <div id="orderbook"></div>
   <h3 id="ratiosTitle">نسبة الشراء والبيع (٪)</h3>
   <div id="ratios"></div>
-
-  <!-- إعلان منبثق -->
-  <div id="adPopup">
-    <h2>إعلان خاص</h2>
-    <p>لا تفوت فرصة الاستثمار في العملات الرقمية مع أفضل منصة تداول! انضم الآن.</p>
-    <button onclick="document.getElementById('adPopup').style.display='none'">إغلاق</button>
-  </div>
 
   <script>
     let chart;
@@ -291,11 +258,6 @@
 
     fetchChart();
     setInterval(() => fetchChart(true), 10000);
-
-    // عرض الإعلان بعد ثانيتين
-    setTimeout(() => {
-      document.getElementById("adPopup").style.display = "block";
-    }, 2000);
   </script>
 </body>
 </html>
