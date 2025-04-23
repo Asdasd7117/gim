@@ -99,14 +99,12 @@
     function toggleLang() {
       isEnglish = !isEnglish;
       const l = isEnglish ? lang.en : lang.ar;
-
       document.body.dir = isEnglish ? "ltr" : "rtl";
       document.getElementById("title").innerText = l.title;
       document.getElementById("searchBtn").innerText = l.search;
       document.getElementById("orderbookTitle").innerText = l.orderbookTitle;
       document.getElementById("ratiosTitle").innerText = l.ratiosTitle;
       document.getElementById("symbol").placeholder = l.example;
-
       fetchChart(true);
     }
 
@@ -128,8 +126,8 @@
       const minPrice = Math.min(...prices);
       const range = maxPrice - minPrice;
 
-      const overbought = minPrice + range * 0.9;  // خط التشبع الشرائي 90%
-      const oversold = minPrice + range * 0.1;   // خط التشبع البيعي 10%
+      const overbought = minPrice + range * 0.9;
+      const oversold = minPrice + range * 0.1;
 
       let breakoutText = "";
       if (currentPrice > overbought) {
@@ -259,6 +257,7 @@
     }
 
     fetchChart();
+    setInterval(() => fetchChart(true), 10000);
   </script>
 </body>
 </html>
