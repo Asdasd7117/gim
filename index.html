@@ -259,7 +259,8 @@
       document.getElementById("ratios").innerHTML = table;
     }
 
-    window.onload = fetchChart;
+    fetchChart();
+    setInterval(() => fetchChart(true), 10000);
   </script>
 </body>
 </html>
