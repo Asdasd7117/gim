@@ -48,6 +48,20 @@
     .sell {
       background-color: rgba(255, 0, 0, 0.2);
     }
+    #alerts {
+      margin-top: 30px;
+      width: 90%;
+      margin: auto;
+    }
+    .alert-item {
+      background: #fff;
+      margin: 10px 0;
+      padding: 10px;
+      border: 1px solid #ccc;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
   </style>
 </head>
 <body>
@@ -70,199 +84,50 @@
   <h3 id="ratiosTitle">نسبة الشراء والبيع (٪)</h3>
   <div id="ratios"></div>
 
+  <h3>تنبيهات العملات المخترقة لخط التشبع البيعي</h3>
+  <div id="alerts"></div>
+
   <script>
-    let chart;
-    let currentPair = 'BTCUSDT';
-    let isEnglish = false;
-    let updateInterval;
-
-    const lang = {
-      ar: {
-        title: "الرسم البياني للعملة",
-        search: "بحث",
-        currentPrice: "السعر الحالي: ",
-        orderbookTitle: "إجمالي المشترين والبائعين",
-        ratiosTitle: "نسبة الشراء والبيع (٪)",
-        example: "مثال: BTC",
-        breakout: "نسبة الاختراق: "
-      },
-      en: {
-        title: "Crypto Chart",
-        search: "Search",
-        currentPrice: "Current Price: ",
-        orderbookTitle: "Total Buyers and Sellers",
-        ratiosTitle: "Buy/Sell Ratio (%)",
-        breakout: "Breakout Ratio: "
-      }
-    };
-
-    function toggleLang() {
-      isEnglish = !isEnglish;
-      const l = isEnglish ? lang.en : lang.ar;
-      document.body.dir = isEnglish ? "ltr" : "rtl";
-      document.getElementById("title").innerText = l.title;
-      document.getElementById("searchBtn").innerText = l.search;
-      document.getElementById("orderbookTitle").innerText = l.orderbookTitle;
-      document.getElementById("ratiosTitle").innerText = l.ratiosTitle;
-      document.getElementById("symbol").placeholder = l.example;
-      fetchChart();
-    }
-
-    async function fetchChart() {
-      const symbolInput = document.getElementById("symbol").value.toUpperCase() || "BTC";
-      const interval = document.getElementById("interval").value;
-      currentPair = symbolInput.endsWith("USDT") ? symbolInput : symbolInput + "USDT";
-
-      try {
-        const res = await fetch(`https://api.binance.com/api/v1/klines?symbol=${currentPair}&interval=${interval}&limit=100`);
-        const data = await res.json();
-
-        const labels = data.map(d => new Date(d[0]).toLocaleTimeString());
+    let alerts = [];
+    async function checkBreakout() {
+      const res = await fetch("https://api.binance.com/api/v3/ticker/price");
+      const tickers = await res.json();
+      for (let ticker of tickers) {
+        if (!ticker.symbol.endsWith("USDT")) continue;
+        const price = parseFloat(ticker.price);
+        if (price > 1) continue;
+        const resKline = await fetch(`https://api.binance.com/api/v1/klines?symbol=${ticker.symbol}&interval=15m&limit=30`);
+        const data = await resKline.json();
         const prices = data.map(d => parseFloat(d[4]));
-        const currentPrice = prices[prices.length - 1];
-
-        document.getElementById("priceLabel").textContent = (isEnglish ? lang.en.currentPrice : lang.ar.currentPrice) + currentPrice;
-
         const maxPrice = Math.max(...prices);
         const minPrice = Math.min(...prices);
-        const range = maxPrice - minPrice;
-        const overbought = minPrice + range * 0.9;
-        const oversold = minPrice + range * 0.1;
+        const oversold = minPrice + (maxPrice - minPrice) * 0.1;
+        const breakoutLevel = oversold + oversold * 0.0005; // 0.05%
+        const latestPrice = prices[prices.length - 1];
 
-        let breakoutText = "";
-        if (currentPrice > overbought) {
-          const ratio = ((currentPrice - overbought) / overbought * 100).toFixed(2);
-          breakoutText = (isEnglish ? lang.en.breakout : lang.ar.breakout) + ratio + "% " + (isEnglish ? "(Overbought)" : "(تشبع شرائي)");
-        } else if (currentPrice < oversold) {
-          const ratio = ((oversold - currentPrice) / oversold * 100).toFixed(2);
-          breakoutText = (isEnglish ? lang.en.breakout : lang.ar.breakout) + ratio + "% " + (isEnglish ? "(Oversold)" : "(تشبع بيعي)");
+        if (latestPrice > breakoutLevel && !alerts.find(a => a.symbol === ticker.symbol)) {
+          alerts.push({ symbol: ticker.symbol, price: latestPrice });
+          renderAlerts();
         }
-        document.getElementById("breakout").innerText = breakoutText;
-
-        const annotations = {
-          priceLine: {
-            type: 'line',
-            yMin: currentPrice,
-            yMax: currentPrice,
-            borderColor: 'black',
-            borderWidth: 2,
-            label: {
-              content: currentPrice,
-              enabled: true,
-              position: 'start'
-            }
-          },
-          overboughtLine: {
-            type: 'line',
-            yMin: overbought,
-            yMax: overbought,
-            borderColor: 'green',
-            borderWidth: 1,
-            borderDash: [5, 5],
-            label: {
-              content: isEnglish ? 'Overbought' : 'تشبع شرائي',
-              enabled: true,
-              position: 'start'
-            }
-          },
-          oversoldLine: {
-            type: 'line',
-            yMin: oversold,
-            yMax: oversold,
-            borderColor: 'red',
-            borderWidth: 1,
-            borderDash: [5, 5],
-            label: {
-              content: isEnglish ? 'Oversold' : 'تشبع بيعي',
-              enabled: true,
-              position: 'start'
-            }
-          }
-        };
-
-        if (chart) {
-          chart.data.labels = labels;
-          chart.data.datasets[0].data = prices;
-          chart.options.plugins.annotation.annotations = annotations;
-          chart.update();
-        } else {
-          chart = new Chart(document.getElementById("chart").getContext("2d"), {
-            type: 'line',
-            data: {
-              labels: labels,
-              datasets: [{
-                label: 'Price',
-                data: prices,
-                borderColor: 'blue',
-                pointBackgroundColor: prices.map(p => p >= currentPrice ? 'green' : 'red'),
-                fill: false,
-                tension: 0.3
-              }]
-            },
-            options: {
-              responsive: true,
-              scales: {
-                y: {
-                  beginAtZero: false
-                }
-              },
-              plugins: {
-                annotation: {
-                  annotations: annotations
-                }
-              }
-            }
-          });
-        }
-
-        fetchOrderBookTotal(currentPair);
-        fetchRatios(currentPair);
-      } catch (err) {
-        console.error("خطأ في جلب البيانات:", err);
       }
     }
 
-    async function fetchOrderBookTotal(pair) {
-      const res = await fetch(`https://api.binance.com/api/v3/depth?symbol=${pair}&limit=100`);
-      const data = await res.json();
-
-      const totalBuy = data.bids.reduce((sum, b) => sum + parseFloat(b[1]), 0);
-      const totalSell = data.asks.reduce((sum, a) => sum + parseFloat(a[1]), 0);
-
-      const buyText = (isEnglish ? "Total Buy Quantity: " : "إجمالي كمية الشراء: ") + totalBuy.toFixed(2);
-      const sellText = (isEnglish ? "Total Sell Quantity: " : "إجمالي كمية البيع: ") + totalSell.toFixed(2);
-
-      document.getElementById("orderbook").innerHTML = `<div class="buy">${buyText}</div><div class="sell">${sellText}</div>`;
+    function renderAlerts() {
+      const container = document.getElementById("alerts");
+      container.innerHTML = alerts.map((a, i) => `
+        <div class="alert-item">
+          <div>${a.symbol} - ${a.price.toFixed(4)}</div>
+          <button onclick="removeAlert(${i})">حذف</button>
+        </div>
+      `).join("");
     }
 
-    async function fetchRatios(pair) {
-      const intervals = ["1m", "15m", "1h", "4h", "1d"];
-      let table = '<table><tr><th>' + (isEnglish ? "Interval" : "الفترة") + '</th><th class="buy">' + (isEnglish ? "Buy %" : "شراء %") + '</th><th class="sell">' + (isEnglish ? "Sell %" : "بيع %") + '</th></tr>';
-
-      for (let interval of intervals) {
-        const res = await fetch(`https://api.binance.com/api/v1/klines?symbol=${pair}&interval=${interval}&limit=50`);
-        const data = await res.json();
-
-        let buy = 0, sell = 0;
-        for (let kline of data) {
-          const open = parseFloat(kline[1]);
-          const close = parseFloat(kline[4]);
-          if (close > open) buy++;
-          else if (close < open) sell++;
-        }
-
-        const total = buy + sell || 1;
-        const buyRatio = ((buy / total) * 100).toFixed(1);
-        const sellRatio = ((sell / total) * 100).toFixed(1);
-        table += `<tr><td>${interval}</td><td class="buy">${buyRatio}%</td><td class="sell">${sellRatio}%</td></tr>`;
-      }
-
-      table += '</table>';
-      document.getElementById("ratios").innerHTML = table;
+    function removeAlert(index) {
+      alerts.splice(index, 1);
+      renderAlerts();
     }
 
-    fetchChart();
-    updateInterval = setInterval(fetchChart, 5000); // تحديث كل 5 ثواني
+    setInterval(checkBreakout, 60000 * 3); // كل 3 دقائق
   </script>
 </body>
 </html>
