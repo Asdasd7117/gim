@@ -65,6 +65,8 @@
   <div id="priceLabel">السعر الحالي: --</div>    
   <canvas id="chart" width="900" height="400"></canvas>    
   <div id="breakout"></div>    
+  <h3 id="pressureTitle">نسبة ضغط الشراء والبيع</h3>    
+  <div id="pressure"></div>    
   <h3 id="orderbookTitle">إجمالي المشترين والبائعين</h3>    
   <div id="orderbook"></div>    
   <h3 id="ratiosTitle">نسبة الشراء والبيع (٪)</h3>    
@@ -87,6 +89,9 @@
         orderbookTitle: "إجمالي المشترين والبائعين",    
         ratiosTitle: "نسبة الشراء والبيع (٪)",    
         breakoutCoinsTitle: "العملات التي اخترقت خط التشبع البيعي",    
+        pressureTitle: "نسبة ضغط الشراء والبيع",    
+        buyPressure: "ضغط الشراء: ",    
+        sellPressure: "ضغط البيع: ",    
         coin: "العملة",    
         price: "السعر",    
         action: "إجراء",    
@@ -101,6 +106,9 @@
         orderbookTitle: "Total Buyers and Sellers",    
         ratiosTitle: "Buy/Sell Ratio (%)",    
         breakoutCoinsTitle: "Coins Breaking Oversold Line",    
+        pressureTitle: "Buy and Sell Pressure Ratio",    
+        buyPressure: "Buy Pressure: ",    
+        sellPressure: "Sell Pressure: ",    
         coin: "Coin",    
         price: "Price",    
         action: "Action",    
@@ -119,6 +127,7 @@
       document.getElementById("orderbookTitle").innerText = l.orderbookTitle;    
       document.getElementById("ratiosTitle").innerText = l.ratiosTitle;    
       document.getElementById("breakoutCoinsTitle").innerText = l.breakoutCoinsTitle;    
+      document.getElementById("pressureTitle").innerText = l.pressureTitle;    
       document.getElementById("symbol").placeholder = l.example;    
       fetchChart();    
       updateBreakoutCoinsTable();    
@@ -231,14 +240,14 @@
           });    
         }    
     
-        fetchOrderBookTotal(currentPair);    
+        fetchOrderBookTotal(currentPair, currentPrice);    
         fetchRatios(currentPair);    
       } catch (err) {    
         console.error("خطأ في جلب البيانات:", err);    
       }    
     }    
     
-    async function fetchOrderBookTotal(pair) {    
+    async function fetchOrderBookTotal(pair, currentPrice) {    
       try {    
         const res = await fetch(`https://api.binance.com/api/v3/depth?symbol=${pair}&limit=100`);    
         const data = await res.json();    
@@ -250,6 +259,22 @@
         const sellText = (isEnglish ? "Total Sell Quantity: " : "إجمالي كمية البيع: ") + totalSell.toFixed(2);    
     
         document.getElementById("orderbook").innerHTML = `<div class="buy">${buyText}</div><div class="sell">${sellText}</div>`;    
+    
+        // Calculate Buy and Sell Pressure    
+        const buyPressure = data.bids    
+          .filter(b => parseFloat(b[0]) <= currentPrice)    
+          .reduce((sum, b) => sum + parseFloat(b[1]), 0);    
+        const sellPressure = data.asks    
+          .filter(a => parseFloat(a[0]) >= currentPrice)    
+          .reduce((sum, a) => sum + parseFloat(a[1]), 0);    
+        const totalPressure = buyPressure + sellPressure || 1;    
+        const buyPressureRatio = ((buyPressure / totalPressure) * 100).toFixed(1);    
+        const sellPressureRatio = ((sellPressure / totalPressure) * 100).toFixed(1);    
+    
+        const buyPressureText = (isEnglish ? lang.en.buyPressure : lang.ar.buyPressure) + buyPressureRatio + "%";    
+        const sellPressureText = (isEnglish ? lang.en.sellPressure : lang.ar.sellPressure) + sellPressureRatio + "%";    
+    
+        document.getElementById("pressure").innerHTML = `<div class="buy">${buyPressureText}</div><div class="sell">${sellPressureText}</div>`;    
       } catch (err) {    
         console.error(`خطأ في جلب دفتر الطلبات لـ ${pair}:`, err);    
       }    
@@ -287,7 +312,7 @@
     
     async function checkOversoldBreakout() {    
       try {    
-        const interval = "1h"; // Changed to 1 hour    
+        const interval = "1h"; // Use 1 hour timeframe    
         const res = await fetch('https://api.binance.com/api/v3/exchangeInfo');    
         const exchangeInfo = await res.json();    
         const usdtPairs = exchangeInfo.symbols    
@@ -296,21 +321,25 @@
     
         for (let pair of usdtPairs) {    
           try {    
-            const klineRes = await fetch(`https://api.binance.com/api/v1/klines?symbol=${pair}&interval=${interval}&limit=2`);    
+            // Fetch last 3 klines for breakout confirmation    
+            const klineRes = await fetch(`https://api.binance.com/api/v1/klines?symbol=${pair}&interval=${interval}&limit=3`);    
             const klines = await klineRes.json();    
-            if (klines.length < 2) {    
+            if (klines.length < 3) {    
               console.warn(`بيانات غير كافية لـ ${pair}`);    
               continue;    
             }    
     
-            const prevClose = parseFloat(klines[0][4]);    
-            const currentClose = parseFloat(klines[1][4]);    
+            const prevPrevClose = parseFloat(klines[0][4]); // Close price 2 candles ago    
+            const prevClose = parseFloat(klines[1][4]); // Close price 1 candle ago    
+            const currentClose = parseFloat(klines[2][4]); // Current close price    
+            const currentVolume = parseFloat(klines[2][5]); // Current volume    
     
             if (currentClose >= 1) {    
               console.log(`تخطي ${pair}: السعر (${currentClose}) أكبر من أو يساوي 1 دولار`);    
               continue;    
             }    
     
+            // Fetch last 100 klines for price range and volume average    
             const priceRes = await fetch(`https://api.binance.com/api/v1/klines?symbol=${pair}&interval=${interval}&limit=100`);    
             const priceData = await priceRes.json();    
             if (priceData.length < 100) {    
@@ -318,23 +347,26 @@
               continue;    
             }    
             const prices = priceData.map(d => parseFloat(d[4]));    
+            const volumes = priceData.slice(-10).map(d => parseFloat(d[5])); // Last 10 volumes    
             const maxPrice = Math.max(...prices);    
             const minPrice = Math.min(...prices);    
             const range = Math.max(maxPrice - minPrice, 0.0001); // Prevent zero range    
             const oversold = minPrice + range * 0.1;    
+            const avgVolume = volumes.reduce((sum, v) => sum + v, 0) / volumes.length;    
     
-            if (prevClose <= oversold && currentClose > oversold) {    
+            // Check for true breakout    
+            if (prevClose <= oversold && currentClose > oversold && prevPrevClose <= oversold) {    
               const breakoutRatio = ((currentClose - oversold) / oversold * 100);    
-              if (breakoutRatio >= 0.05) {    
+              if (breakoutRatio >= 0.05 && currentVolume > avgVolume) {    
                 const coin = pair.replace('USDT', '');    
-                console.log(`اختراق مكتشف لـ ${coin}: السعر السابق=${prevClose}, السعر الحالي=${currentClose}, oversold=${oversold}, نسبة الاختراق=${breakoutRatio}%`);    
+                console.log(`اختراق صادق مكتشف لـ ${coin}: السعر السابق=${prevClose}, السعر الحالي=${currentClose}, oversold=${oversold}, نسبة الاختراق=${breakoutRatio}%, الحجم=${currentVolume}, متوسط الحجم=${avgVolume}`);    
                 if (!breakoutCoins.some(c => c.coin === coin)) {    
                   breakoutCoins.push({ coin, price: currentClose });    
                 } else {    
                   breakoutCoins = breakoutCoins.map(c => c.coin === coin ? { coin, price: currentClose } : c);    
                 }    
               } else {    
-                console.log(`تخطي ${pair}: نسبة الاختراق (${breakoutRatio}%) أقل من 0.05%`);    
+                console.log(`تخطي ${pair}: نسبة الاختراق (${breakoutRatio}%) أقل من 0.05% أو حجم التداول (${currentVolume}) أقل من المتوسط (${avgVolume})`);    
               }    
             }    
           } catch (err) {    
