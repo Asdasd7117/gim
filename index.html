@@ -239,7 +239,7 @@
     }    
     
     async function fetchOrderBookTotal(pair) {    
-      try {
+      try {    
         const res = await fetch(`https://api.binance.com/api/v3/depth?symbol=${pair}&limit=100`);    
         const data = await res.json();    
     
@@ -250,9 +250,9 @@
         const sellText = (isEnglish ? "Total Sell Quantity: " : "إجمالي كمية البيع: ") + totalSell.toFixed(2);    
     
         document.getElementById("orderbook").innerHTML = `<div class="buy">${buyText}</div><div class="sell">${sellText}</div>`;    
-      } catch (err) {
-        console.error(`خطأ في جلب دفتر الطلبات لـ ${pair}:`, err);
-      }
+      } catch (err) {    
+        console.error(`خطأ في جلب دفتر الطلبات لـ ${pair}:`, err);    
+      }    
     }    
     
     async function fetchRatios(pair) {    
@@ -260,7 +260,7 @@
       let table = '<table><tr><th>' + (isEnglish ? "Interval" : "الفترة") + '</th><th class="buy">' + (isEnglish ? "Buy %" : "شراء %") + '</th><th class="sell">' + (isEnglish ? "Sell %" : "بيع %") + '</th></tr>';    
     
       for (let interval of intervals) {    
-        try {
+        try {    
           const res = await fetch(`https://api.binance.com/api/v1/klines?symbol=${pair}&interval=${interval}&limit=50`);    
           const data = await res.json();    
     
@@ -276,9 +276,9 @@
           const buyRatio = ((buy / total) * 100).toFixed(1);    
           const sellRatio = ((sell / total) * 100).toFixed(1);    
           table += `<tr><td>${interval}</td><td class="buy">${buyRatio}%</td><td class="sell">${sellRatio}%</td></tr>`;    
-        } catch (err) {
-          console.error(`خطأ في جلب نسب الشراء/البيع لـ ${pair} على فترة ${interval}:`, err);
-        }
+        } catch (err) {    
+          console.error(`خطأ في جلب نسب الشراء/البيع لـ ${pair} على فترة ${interval}:`, err);    
+        }    
       }    
     
       table += '</table>';    
@@ -287,7 +287,7 @@
     
     async function checkOversoldBreakout() {    
       try {    
-        const interval = document.getElementById("interval").value;    
+        const interval = "1h"; // Changed to 1 hour    
         const res = await fetch('https://api.binance.com/api/v3/exchangeInfo');    
         const exchangeInfo = await res.json();    
         const usdtPairs = exchangeInfo.symbols    
@@ -295,28 +295,28 @@
           .map(s => s.symbol);    
     
         for (let pair of usdtPairs) {    
-          try {
+          try {    
             const klineRes = await fetch(`https://api.binance.com/api/v1/klines?symbol=${pair}&interval=${interval}&limit=2`);    
             const klines = await klineRes.json();    
-            if (klines.length < 2) {
-              console.warn(`بيانات غير كافية لـ ${pair}`);
+            if (klines.length < 2) {    
+              console.warn(`بيانات غير كافية لـ ${pair}`);    
               continue;    
             }    
     
             const prevClose = parseFloat(klines[0][4]);    
             const currentClose = parseFloat(klines[1][4]);    
     
-            if (currentClose >= 1) {
-              console.log(`تخطي ${pair}: السعر (${currentClose}) أكبر من أو يساوي 1 دولار`);
+            if (currentClose >= 1) {    
+              console.log(`تخطي ${pair}: السعر (${currentClose}) أكبر من أو يساوي 1 دولار`);    
               continue;    
             }    
     
             const priceRes = await fetch(`https://api.binance.com/api/v1/klines?symbol=${pair}&interval=${interval}&limit=100`);    
             const priceData = await priceRes.json();    
-            if (priceData.length < 100) {
-              console.warn(`بيانات غير كافية (أقل من 100 شمعة) لـ ${pair}`);
-              continue;
-            }
+            if (priceData.length < 100) {    
+              console.warn(`بيانات غير كافية (أقل من 100 شمعة) لـ ${pair}`);    
+              continue;    
+            }    
             const prices = priceData.map(d => parseFloat(d[4]));    
             const maxPrice = Math.max(...prices);    
             const minPrice = Math.min(...prices);    
@@ -327,19 +327,19 @@
               const breakoutRatio = ((currentClose - oversold) / oversold * 100);    
               if (breakoutRatio >= 0.05) {    
                 const coin = pair.replace('USDT', '');    
-                console.log(`اختراق مكتشف لـ ${coin}: السعر السابق=${prevClose}, السعر الحالي=${currentClose}, oversold=${oversold}, نسبة الاختراق=${breakoutRatio}%`);
+                console.log(`اختراق مكتشف لـ ${coin}: السعر السابق=${prevClose}, السعر الحالي=${currentClose}, oversold=${oversold}, نسبة الاختراق=${breakoutRatio}%`);    
                 if (!breakoutCoins.some(c => c.coin === coin)) {    
                   breakoutCoins.push({ coin, price: currentClose });    
                 } else {    
                   breakoutCoins = breakoutCoins.map(c => c.coin === coin ? { coin, price: currentClose } : c);    
                 }    
-              } else {
-                console.log(`تخطي ${pair}: نسبة الاختراق (${breakoutRatio}%) أقل من 0.05%`);
-              }
+              } else {    
+                console.log(`تخطي ${pair}: نسبة الاختراق (${breakoutRatio}%) أقل من 0.05%`);    
+              }    
             }    
-          } catch (err) {
-            console.error(`خطأ في معالجة ${pair}:`, err);
-          }
+          } catch (err) {    
+            console.error(`خطأ في معالجة ${pair}:`, err);    
+          }    
         }    
         updateBreakoutCoinsTable();    
       } catch (err) {    
@@ -365,7 +365,7 @@
     fetchChart();    
     updateInterval = setInterval(fetchChart, 5000);    
     checkOversoldBreakout();    
-    setInterval(checkOversoldBreakout, 30000); // Reduced to 30 seconds for faster detection    
+    setInterval(checkOversoldBreakout, 30000); // Check every 30 seconds    
   </script>    
 </body>    
 </html>
