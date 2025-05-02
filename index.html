@@ -48,6 +48,19 @@
     .sell {    
       background-color: rgba(255, 0, 0, 0.2);    
     }    
+    .trend-up { color: green; }    
+    .trend-down { color: red; }    
+    #alert {    
+      font-size: 18px;    
+      font-weight: bold;    
+      margin: 10px;    
+      padding: 10px;    
+      border-radius: 5px;    
+    }    
+    .alert-bullish {    
+      background-color: rgba(0, 255, 0, 0.3);    
+      color: green;    
+    }    
   </style>    
 </head>    
 <body>    
@@ -63,6 +76,7 @@
   </select>    
   <button onclick="fetchChart()" id="searchBtn">بحث</button>    
   <div id="priceLabel">السعر الحالي: --</div>    
+  <div id="alert"></div>    
   <canvas id="chart" width="900" height="400"></canvas>    
   <div id="breakout"></div>    
   <h3 id="pressureTitle">نسبة ضغط الشراء والبيع</h3>    
@@ -80,6 +94,7 @@
     let isEnglish = false;    
     let updateInterval;    
     let breakoutCoins = JSON.parse(localStorage.getItem('breakoutCoins')) || [];    
+    let lastPrice = null;    
     
     const lang = {    
       ar: {    
@@ -99,7 +114,10 @@
         favorite: "إضافة إلى المفضلة",    
         unfavorite: "إزالة من المفضلة",    
         example: "مثال: BTC",    
-        breakout: "نسبة الاختراق: "    
+        breakout: "نسبة الاختراق: ",    
+        trendUp: "السعر في ارتفاع",    
+        trendDown: "السعر في هبوط",    
+        bullishAlert: "إشارة صعودية: ضغط الشراء مرتفع جدًا أثناء الهبوط، السعر قد يرتفع قريبًا! ↑"    
       },    
       en: {    
         title: "Crypto Chart",    
@@ -118,7 +136,10 @@
         favorite: "Add to Favorites",    
         unfavorite: "Remove from Favorites",    
         example: "Example: BTC",    
-        breakout: "Breakout Ratio: "    
+        breakout: "Breakout Ratio: ",    
+        trendUp: "Price is Rising",    
+        trendDown: "Price is Falling",    
+        bullishAlert: "Bullish Signal: High Buy Pressure During Downtrend, Price May Rise Soon! ↑"    
       }    
     };    
     
@@ -148,15 +169,21 @@
     
         const labels = data.map(d => new Date(d[0]).toLocaleTimeString());    
         const prices = data.map(d => parseFloat(d[4]));    
+        const volumes = data.map(d => parseFloat(d[5]));    
         const currentPrice = prices[prices.length - 1];    
+        const previousPrice = prices[prices.length - 2] || currentPrice;    
+        const currentVolume = volumes[volumes.length - 1];    
+        const avgVolume = volumes.slice(-10).reduce((sum, v) => sum + v, 0) / 10;    
+        const trend = currentPrice > previousPrice ? 'trend-up' : 'trend-down';    
+        const trendText = currentPrice > previousPrice ? (isEnglish ? lang.en.trendUp : lang.ar.trendUp) : (isEnglish ? lang.en.trendDown : lang.ar.trendDown);    
     
-        document.getElementById("priceLabel").textContent = (isEnglish ? lang.en.currentPrice : lang.ar.currentPrice) + currentPrice;    
+        document.getElementById("priceLabel").innerHTML = (isEnglish ? lang.en.currentPrice : lang.ar.currentPrice) + currentPrice + ` <span class="${trend}">[${trendText}]</span>`;    
     
         const maxPrice = Math.max(...prices);    
         const minPrice = Math.min(...prices);    
-        const range = Math.max(maxPrice - minPrice, 0.0001); // Prevent zero range    
+        const range = Math.max(maxPrice - minPrice, 0.0001);    
         const overbought = minPrice + range * 0.9;    
-        const oversold = minPrice; // Oversold line at 0 (minPrice)    
+        const oversold = minPrice;    
     
         let breakoutText = "";    
         if (currentPrice > overbought) {    
@@ -244,43 +271,80 @@
           });    
         }    
     
-        fetchOrderBookTotal(currentPair, currentPrice);    
+        fetchOrderBookTotal(currentPair, currentPrice, previousPrice, currentVolume, avgVolume);    
         fetchRatios(currentPair);    
+        lastPrice = currentPrice;    
       } catch (err) {    
         console.error("خطأ في جلب البيانات:", err);    
       }    
     }    
     
-    async function fetchOrderBookTotal(pair, currentPrice) {    
+    async function fetchOrderBookTotal(pair, currentPrice, previousPrice, currentVolume, avgVolume) {    
       try {    
-        const res = await fetch(`https://api.binance.com/api/v3/depth?symbol=${pair}&limit=100`);    
-        const data = await res.json();    
+        const resOrder = await fetch(`https://api.binance.com/api/v3/depth?symbol=${pair}&limit=100`);    
+        const dataOrder = await resOrder.json();    
+        const resTrades = await fetch(`https://api.binance.com/api/v3/trades?symbol=${pair}&limit=50`);    
+        const dataTrades = await resTrades.json();    
     
-        const totalBuy = data.bids.reduce((sum, b) => sum + parseFloat(b[1]), 0);    
-        const totalSell = data.asks.reduce((sum, a) => sum + parseFloat(a[1]), 0);    
+        const totalBuy = dataOrder.bids.reduce((sum, b) => sum + parseFloat(b[1]), 0);    
+        const totalSell = dataOrder.asks.reduce((sum, a) => sum + parseFloat(a[1]), 0);    
     
         const buyText = (isEnglish ? "Total Buy Quantity: " : "إجمالي كمية الشراء: ") + totalBuy.toFixed(2);    
         const sellText = (isEnglish ? "Total Sell Quantity: " : "إجمالي كمية البيع: ") + totalSell.toFixed(2);    
     
         document.getElementById("orderbook").innerHTML = `<div class="buy">${buyText}</div><div class="sell">${sellText}</div>`;    
     
-        // Calculate Buy and Sell Pressure    
-        const buyPressure = data.bids    
+        const buyPressureOrder = dataOrder.bids    
           .filter(b => parseFloat(b[0]) <= currentPrice)    
           .reduce((sum, b) => sum + parseFloat(b[1]), 0);    
-        const sellPressure = data.asks    
+        const sellPressureOrder = dataOrder.asks    
           .filter(a => parseFloat(a[0]) >= currentPrice)    
           .reduce((sum, a) => sum + parseFloat(a[1]), 0);    
+        const totalPressureOrder = buyPressureOrder + sellPressureOrder || 1;    
+    
+        const buyTrades = dataTrades.filter(t => t.isBuyerMaker === false).reduce((sum, t) => sum + parseFloat(t.qty), 0);    
+        const sellTrades = dataTrades.filter(t => t.isBuyerMaker === true).reduce((sum, t) => sum + parseFloat(t.qty), 0);    
+        const totalTrades = buyTrades + sellTrades || 1;    
+    
+        const volumeWeight = currentVolume / avgVolume;    
+        const buyPressure = (buyPressureOrder * 0.6 + buyTrades * 0.4) * volumeWeight;    
+        const sellPressure = (sellPressureOrder * 0.6 + sellTrades * 0.4) * volumeWeight;    
         const totalPressure = buyPressure + sellPressure || 1;    
-        const buyPressureRatio = ((buyPressure / totalPressure) * 100).toFixed(1);    
-        const sellPressureRatio = ((sellPressure / totalPressure) * 100).toFixed(1);    
+    
+        let buyPressureRatio, sellPressureRatio;    
+        if (currentPrice > previousPrice) {    
+          buyPressureRatio = ((buyPressure / totalPressure) * 100 * 2.0).toFixed(1);    
+          sellPressureRatio = ((sellPressure / totalPressure) * 100 * 0.3).toFixed(1);    
+        } else if (currentPrice < previousPrice) {    
+          buyPressureRatio = ((buyPressure / totalPressure) * 100 * 0.3).toFixed(1);    
+          sellPressureRatio = ((sellPressure / totalPressure) * 100 * 2.0).toFixed(1);    
+        } else {    
+          buyPressureRatio = ((buyPressure / totalPressure) * 100).toFixed(1);    
+          sellPressureRatio = ((sellPressure / totalPressure) * 100).toFixed(1);    
+        }    
+    
+        const totalRatio = parseFloat(buyPressureRatio) + parseFloat(sellPressureRatio);    
+        if (totalRatio > 0) {    
+          buyPressureRatio = ((parseFloat(buyPressureRatio) / totalRatio) * 100).toFixed(1);    
+          sellPressureRatio = ((parseFloat(sellPressureRatio) / totalRatio) * 100).toFixed(1);    
+        }    
     
         const buyPressureText = (isEnglish ? lang.en.buyPressure : lang.ar.buyPressure) + buyPressureRatio + "%";    
         const sellPressureText = (isEnglish ? lang.en.sellPressure : lang.ar.sellPressure) + sellPressureRatio + "%";    
     
         document.getElementById("pressure").innerHTML = `<div class="buy">${buyPressureText}</div><div class="sell">${sellPressureText}</div>`;    
+    
+        // Add Alert for Potential Price Increase    
+        const alertDiv = document.getElementById("alert");    
+        if (currentPrice < previousPrice && parseFloat(buyPressureRatio) >= 70 && parseFloat(sellPressureRatio) <= 30) {    
+          alertDiv.className = "alert-bullish";    
+          alertDiv.innerText = isEnglish ? lang.en.bullishAlert : lang.ar.bullishAlert;    
+        } else {    
+          alertDiv.className = "";    
+          alertDiv.innerText = "";    
+        }    
       } catch (err) {    
-        console.error(`خطأ في جلب دفتر الطلبات لـ ${pair}:`, err);    
+        console.error(`خطأ في جلب دفتر الطلبات أو التداولات لـ ${pair}:`, err);    
       }    
     }    
     
@@ -316,49 +380,46 @@
     
     async function checkOversoldBreakout() {    
       try {    
-        const interval = "1h"; // Use 1 hour timeframe    
+        const interval = "1h";    
         const res = await fetch('https://api.binance.com/api/v3/exchangeInfo');    
         const exchangeInfo = await res.json();    
         const usdtPairs = exchangeInfo.symbols    
           .filter(s => s.symbol.endsWith('USDT') && s.status === 'TRADING')    
           .map(s => s.symbol);    
     
+        let coinsAdded = 0;    
         for (let pair of usdtPairs) {    
           try {    
-            // Fetch last 3 klines for breakout confirmation    
             const klineRes = await fetch(`https://api.binance.com/api/v1/klines?symbol=${pair}&interval=${interval}&limit=3`);    
             const klines = await klineRes.json();    
             if (klines.length < 3) {    
-              console.warn(`بيانات غير كافية لـ ${pair}`);    
+              console.warn(`بيانات غير كافية لـ ${pair}: عدد الشموع ${klines.length}`);    
               continue;    
             }    
     
-            const prevPrevClose = parseFloat(klines[0][4]); // Close price 2 candles ago    
-            const prevClose = parseFloat(klines[1][4]); // Close price 1 candle ago    
-            const currentClose = parseFloat(klines[2][4]); // Current close price    
-            const currentVolume = parseFloat(klines[2][5]); // Current volume    
+            const prevPrevClose = parseFloat(klines[0][4]);    
+            const prevClose = parseFloat(klines[1][4]);    
+            const currentClose = parseFloat(klines[2][4]);    
+            const currentVolume = parseFloat(klines[2][5]);    
     
             if (currentClose >= 1) {    
               console.log(`تخطي ${pair}: السعر (${currentClose}) أكبر من أو يساوي 1 دولار`);    
               continue;    
             }    
     
-            // Fetch last 100 klines for price range and volume average    
             const priceRes = await fetch(`https://api.binance.com/api/v1/klines?symbol=${pair}&interval=${interval}&limit=100`);    
             const priceData = await priceRes.json();    
             if (priceData.length < 100) {    
-              console.warn(`بيانات غير كافية (أقل من 100 شمعة) لـ ${pair}`);    
+              console.warn(`بيانات غير كافية (أقل من 100 شمعة) لـ ${pair}: عدد الشموع ${priceData.length}`);    
               continue;    
             }    
             const prices = priceData.map(d => parseFloat(d[4]));    
-            const volumes = priceData.slice(-10).map(d => parseFloat(d[5])); // Last 10 volumes    
+            const volumes = priceData.slice(-10).map(d => parseFloat(d[5]));    
             const maxPrice = Math.max(...prices);    
             const minPrice = Math.min(...prices);    
-            const range = Math.max(maxPrice - minPrice, 0.0001); // Prevent zero range    
-            const oversold = minPrice; // Oversold line at 0 (minPrice)    
+            const oversold = minPrice;    
             const avgVolume = volumes.reduce((sum, v) => sum + v, 0) / volumes.length;    
     
-            // Check for true breakout    
             if (prevClose <= oversold && currentClose >= oversold && prevPrevClose <= oversold) {    
               const breakoutRatio = ((currentClose - oversold) / oversold * 100);    
               if (breakoutRatio >= 0.30 && breakoutRatio <= 0.60 && currentVolume > avgVolume) {    
@@ -367,24 +428,28 @@
                 if (!breakoutCoins.some(c => c.coin === coin)) {    
                   const timestamp = Date.now();    
                   breakoutCoins.push({ coin, price: currentClose, timestamp, isFavorite: false });    
-                  localStorage.setItem('breakoutCoins', JSON.stringify(breakoutCoins));    
+                  coinsAdded++;    
+                  console.log(`تمت إضافة ${coin} إلى القائمة. العدد الإجمالي: ${breakoutCoins.length}`);    
                 } else {    
                   breakoutCoins = breakoutCoins.map(c => c.coin === coin ? { ...c, price: currentClose, timestamp: Date.now() } : c);    
-                  localStorage.setItem('breakoutCoins', JSON.stringify(breakoutCoins));    
+                  console.log(`تم تحديث ${coin} في القائمة.`);    
                 }    
               } else {    
                 console.log(`تخطي ${pair}: نسبة الاختراق (${breakoutRatio}%) خارج النطاق [0.30%, 0.60%] أو حجم التداول (${currentVolume}) أقل من المتوسط (${avgVolume})`);    
               }    
+            } else {    
+              console.log(`تخطي ${pair}: لم يتم اختراق خط التشبع البيعي (prevClose=${prevClose}, currentClose=${currentClose}, oversold=${oversold})`);    
             }    
           } catch (err) {    
             console.error(`خطأ في معالجة ${pair}:`, err);    
           }    
         }    
-        // Remove coins older than 6 hours    
         const sixHours = 6 * 60 * 60 * 1000;    
         breakoutCoins = breakoutCoins.filter(c => Date.now() - c.timestamp <= sixHours);    
         localStorage.setItem('breakoutCoins', JSON.stringify(breakoutCoins));    
+        console.log(`تم حفظ ${breakoutCoins.length} عملة في localStorage بعد إزالة العملات القديمة.`);    
         updateBreakoutCoinsTable();    
+        console.log(`تم تحديث الجدول. عدد العملات المضافة في هذه الدورة: ${coinsAdded}`);    
       } catch (err) {    
         console.error("خطأ في فحص الاختراق:", err);    
       }    
@@ -393,32 +458,40 @@
     function updateBreakoutCoinsTable() {    
       const l = isEnglish ? lang.en : lang.ar;    
       let table = '<table><tr><th>' + l.coin + '</th><th>' + l.price + '</th><th>' + l.action + '</th></tr>';    
-      breakoutCoins.forEach((c, index) => {    
-        const favoriteText = c.isFavorite ? l.unfavorite : l.favorite;    
-        table += `<tr><td>${c.coin}</td><td>${c.price.toFixed(6)}</td><td>` +    
-                 `<button onclick="toggleFavorite(${index})">${favoriteText}</button>` +    
-                 `<button onclick="deleteBreakoutCoin(${index})">${l.delete}</button></td></tr>`;    
-      });    
+      if (breakoutCoins.length === 0) {    
+        table += `<tr><td colspan="3">${isEnglish ? "No coins detected yet." : "لم يتم اكتشاف عملات بعد."}</td></tr>`;    
+      } else {    
+        breakoutCoins.forEach((c, index) => {    
+          const favoriteText = c.isFavorite ? l.unfavorite : l.favorite;    
+          table += `<tr><td>${c.coin}</td><td>${c.price.toFixed(6)}</td><td>` +    
+                   `<button onclick="toggleFavorite(${index})">${favoriteText}</button>` +    
+                   `<button onclick="deleteBreakoutCoin(${index})">${l.delete}</button></td></tr>`;    
+        });    
+      }    
       table += '</table>';    
       document.getElementById("breakoutCoins").innerHTML = table;    
+      console.log(`تم تحديث الجدول المرئي. عدد العملات المعروضة: ${breakoutCoins.length}`);    
     }    
     
     function deleteBreakoutCoin(index) {    
+      const deletedCoin = breakoutCoins[index].coin;    
       breakoutCoins.splice(index, 1);    
       localStorage.setItem('breakoutCoins', JSON.stringify(breakoutCoins));    
       updateBreakoutCoinsTable();    
+      console.log(`تم حذف ${deletedCoin} من القائمة. العدد المتبقي: ${breakoutCoins.length}`);    
     }    
     
     function toggleFavorite(index) {    
       breakoutCoins[index].isFavorite = !breakoutCoins[index].isFavorite;    
       localStorage.setItem('breakoutCoins', JSON.stringify(breakoutCoins));    
       updateBreakoutCoinsTable();    
+      console.log(`تم تغيير حالة المفضلة لـ ${breakoutCoins[index].coin}`);    
     }    
     
     fetchChart();    
     updateInterval = setInterval(fetchChart, 5000);    
     checkOversoldBreakout();    
-    setInterval(checkOversoldBreakout, 30000); // Check every 30 seconds    
+    setInterval(checkOversoldBreakout, 30000);    
   </script>    
 </body>    
 </html>
