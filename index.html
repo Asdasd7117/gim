@@ -79,7 +79,7 @@
     let currentPair = 'BTCUSDT';    
     let isEnglish = false;    
     let updateInterval;    
-    let breakoutCoins = [];    
+    let breakoutCoins = JSON.parse(localStorage.getItem('breakoutCoins')) || [];    
     
     const lang = {    
       ar: {    
@@ -96,6 +96,8 @@
         price: "السعر",    
         action: "إجراء",    
         delete: "حذف",    
+        favorite: "إضافة إلى المفضلة",    
+        unfavorite: "إزالة من المفضلة",    
         example: "مثال: BTC",    
         breakout: "نسبة الاختراق: "    
       },    
@@ -113,6 +115,8 @@
         price: "Price",    
         action: "Action",    
         delete: "Delete",    
+        favorite: "Add to Favorites",    
+        unfavorite: "Remove from Favorites",    
         example: "Example: BTC",    
         breakout: "Breakout Ratio: "    
       }    
@@ -152,7 +156,7 @@
         const minPrice = Math.min(...prices);    
         const range = Math.max(maxPrice - minPrice, 0.0001); // Prevent zero range    
         const overbought = minPrice + range * 0.9;    
-        const oversold = minPrice + range * 0.1;    
+        const oversold = minPrice; // Oversold line at 0 (minPrice)    
     
         let breakoutText = "";    
         if (currentPrice > overbought) {    
@@ -351,28 +355,35 @@
             const maxPrice = Math.max(...prices);    
             const minPrice = Math.min(...prices);    
             const range = Math.max(maxPrice - minPrice, 0.0001); // Prevent zero range    
-            const oversold = minPrice + range * 0.1;    
+            const oversold = minPrice; // Oversold line at 0 (minPrice)    
             const avgVolume = volumes.reduce((sum, v) => sum + v, 0) / volumes.length;    
     
             // Check for true breakout    
-            if (prevClose <= oversold && currentClose > oversold && prevPrevClose <= oversold) {    
+            if (prevClose <= oversold && currentClose >= oversold && prevPrevClose <= oversold) {    
               const breakoutRatio = ((currentClose - oversold) / oversold * 100);    
-              if (breakoutRatio >= 0.05 && currentVolume > avgVolume) {    
+              if (breakoutRatio >= 0.30 && breakoutRatio <= 0.60 && currentVolume > avgVolume) {    
                 const coin = pair.replace('USDT', '');    
                 console.log(`اختراق صادق مكتشف لـ ${coin}: السعر السابق=${prevClose}, السعر الحالي=${currentClose}, oversold=${oversold}, نسبة الاختراق=${breakoutRatio}%, الحجم=${currentVolume}, متوسط الحجم=${avgVolume}`);    
                 if (!breakoutCoins.some(c => c.coin === coin)) {    
-                  breakoutCoins.push({ coin, price: currentClose });    
+                  const timestamp = Date.now();    
+                  breakoutCoins.push({ coin, price: currentClose, timestamp, isFavorite: false });    
+                  localStorage.setItem('breakoutCoins', JSON.stringify(breakoutCoins));    
                 } else {    
-                  breakoutCoins = breakoutCoins.map(c => c.coin === coin ? { coin, price: currentClose } : c);    
+                  breakoutCoins = breakoutCoins.map(c => c.coin === coin ? { ...c, price: currentClose, timestamp: Date.now() } : c);    
+                  localStorage.setItem('breakoutCoins', JSON.stringify(breakoutCoins));    
                 }    
               } else {    
-                console.log(`تخطي ${pair}: نسبة الاختراق (${breakoutRatio}%) أقل من 0.05% أو حجم التداول (${currentVolume}) أقل من المتوسط (${avgVolume})`);    
+                console.log(`تخطي ${pair}: نسبة الاختراق (${breakoutRatio}%) خارج النطاق [0.30%, 0.60%] أو حجم التداول (${currentVolume}) أقل من المتوسط (${avgVolume})`);    
               }    
             }    
           } catch (err) {    
             console.error(`خطأ في معالجة ${pair}:`, err);    
           }    
         }    
+        // Remove coins older than 6 hours    
+        const sixHours = 6 * 60 * 60 * 1000;    
+        breakoutCoins = breakoutCoins.filter(c => Date.now() - c.timestamp <= sixHours);    
+        localStorage.setItem('breakoutCoins', JSON.stringify(breakoutCoins));    
         updateBreakoutCoinsTable();    
       } catch (err) {    
         console.error("خطأ في فحص الاختراق:", err);    
@@ -383,7 +394,10 @@
       const l = isEnglish ? lang.en : lang.ar;    
       let table = '<table><tr><th>' + l.coin + '</th><th>' + l.price + '</th><th>' + l.action + '</th></tr>';    
       breakoutCoins.forEach((c, index) => {    
-        table += `<tr><td>${c.coin}</td><td>${c.price.toFixed(6)}</td><td><button onclick="deleteBreakoutCoin(${index})">${l.delete}</button></td></tr>`;    
+        const favoriteText = c.isFavorite ? l.unfavorite : l.favorite;    
+        table += `<tr><td>${c.coin}</td><td>${c.price.toFixed(6)}</td><td>` +    
+                 `<button onclick="toggleFavorite(${index})">${favoriteText}</button>` +    
+                 `<button onclick="deleteBreakoutCoin(${index})">${l.delete}</button></td></tr>`;    
       });    
       table += '</table>';    
       document.getElementById("breakoutCoins").innerHTML = table;    
@@ -391,6 +405,13 @@
     
     function deleteBreakoutCoin(index) {    
       breakoutCoins.splice(index, 1);    
+      localStorage.setItem('breakoutCoins', JSON.stringify(breakoutCoins));    
+      updateBreakoutCoinsTable();    
+    }    
+    
+    function toggleFavorite(index) {    
+      breakoutCoins[index].isFavorite = !breakoutCoins[index].isFavorite;    
+      localStorage.setItem('breakoutCoins', JSON.stringify(breakoutCoins));    
       updateBreakoutCoinsTable();    
     }    
     
