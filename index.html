@@ -61,6 +61,17 @@
       background-color: rgba(0, 255, 0, 0.3);    
       color: green;    
     }    
+    .alert-bearish {    
+      background-color: rgba(255, 0, 0, 0.3);    
+      color: red;    
+    }    
+    #trendPrediction {    
+      font-size: 16px;    
+      margin: 10px;    
+      padding: 10px;    
+      border: 1px solid #ccc;    
+      border-radius: 5px;    
+    }    
   </style>    
 </head>    
 <body>    
@@ -78,6 +89,7 @@
   <div id="priceLabel">السعر الحالي: --</div>    
   <div id="alert"></div>    
   <canvas id="chart" width="900" height="400"></canvas>    
+  <div id="trendPrediction"></div>    
   <div id="breakout"></div>    
   <h3 id="pressureTitle">نسبة ضغط الشراء والبيع</h3>    
   <div id="pressure"></div>    
@@ -85,15 +97,15 @@
   <div id="orderbook"></div>    
   <h3 id="ratiosTitle">نسبة الشراء والبيع (٪)</h3>    
   <div id="ratios"></div>    
-  <h3 id="breakoutCoinsTitle">العملات التي اخترقت خط التشبع البيعي</h3>    
-  <div id="breakoutCoins"></div>    
+  <h3 id="predictedRisingCoinsTitle">العملات المتوقع ارتفاعها في الساعات القادمة</h3>    
+  <div id="predictedRisingCoins"></div>    
     
   <script>    
     let chart;    
     let currentPair = 'BTCUSDT';    
     let isEnglish = false;    
     let updateInterval;    
-    let breakoutCoins = JSON.parse(localStorage.getItem('breakoutCoins')) || [];    
+    let predictedRisingCoins = JSON.parse(localStorage.getItem('predictedRisingCoins')) || [];    
     let lastPrice = null;    
     
     const lang = {    
@@ -103,7 +115,7 @@
         currentPrice: "السعر الحالي: ",    
         orderbookTitle: "إجمالي المشترين والبائعين",    
         ratiosTitle: "نسبة الشراء والبيع (٪)",    
-        breakoutCoinsTitle: "العملات التي اخترقت خط التشبع البيعي",    
+        predictedRisingCoinsTitle: "العملات المتوقع ارتفاعها في الساعات القادمة",    
         pressureTitle: "نسبة ضغط الشراء والبيع",    
         buyPressure: "ضغط الشراء: ",    
         sellPressure: "ضغط البيع: ",    
@@ -111,13 +123,15 @@
         price: "السعر",    
         action: "إجراء",    
         delete: "حذف",    
-        favorite: "إضافة إلى المفضلة",    
-        unfavorite: "إزالة من المفضلة",    
         example: "مثال: BTC",    
         breakout: "نسبة الاختراق: ",    
         trendUp: "السعر في ارتفاع",    
         trendDown: "السعر في هبوط",    
-        bullishAlert: "إشارة صعودية: ضغط الشراء مرتفع جدًا أثناء الهبوط، السعر قد يرتفع قريبًا! ↑"    
+        bullishAlert: "إشارة صعودية: ضغط الشراء مرتفع جدًا أثناء الهبوط، السعر قد يرتفع قريبًا! ↑",    
+        bearishAlert: "إشارة هبوطية: لمس منطقة المقاومة، السعر قد يهبط! ↓",    
+        supportAlert: "إشارة صعودية: لمس منطقة الدعم، السعر قد يرتفع! ↑",    
+        trendPredictionUp: "توقع الاتجاه للساعات القادمة: السعر قد يرتفع.",    
+        trendPredictionDown: "توقع الاتجاه للساعات القادمة: السعر قد يهبط."    
       },    
       en: {    
         title: "Crypto Chart",    
@@ -125,7 +139,7 @@
         currentPrice: "Current Price: ",    
         orderbookTitle: "Total Buyers and Sellers",    
         ratiosTitle: "Buy/Sell Ratio (%)",    
-        breakoutCoinsTitle: "Coins Breaking Oversold Line",    
+        predictedRisingCoinsTitle: "Coins Expected to Rise in the Next Hours",    
         pressureTitle: "Buy and Sell Pressure Ratio",    
         buyPressure: "Buy Pressure: ",    
         sellPressure: "Sell Pressure: ",    
@@ -133,13 +147,15 @@
         price: "Price",    
         action: "Action",    
         delete: "Delete",    
-        favorite: "Add to Favorites",    
-        unfavorite: "Remove from Favorites",    
         example: "Example: BTC",    
         breakout: "Breakout Ratio: ",    
         trendUp: "Price is Rising",    
         trendDown: "Price is Falling",    
-        bullishAlert: "Bullish Signal: High Buy Pressure During Downtrend, Price May Rise Soon! ↑"    
+        bullishAlert: "Bullish Signal: High Buy Pressure During Downtrend, Price May Rise Soon! ↑",    
+        bearishAlert: "Bearish Signal: Hit Resistance Zone, Price May Drop! ↓",    
+        supportAlert: "Bullish Signal: Hit Support Zone, Price May Rise! ↑",    
+        trendPredictionUp: "Trend Prediction for the Next Hours: Price may rise.",    
+        trendPredictionDown: "Trend Prediction for the Next Hours: Price may drop."    
       }    
     };    
     
@@ -151,11 +167,11 @@
       document.getElementById("searchBtn").innerText = l.search;    
       document.getElementById("orderbookTitle").innerText = l.orderbookTitle;    
       document.getElementById("ratiosTitle").innerText = l.ratiosTitle;    
-      document.getElementById("breakoutCoinsTitle").innerText = l.breakoutCoinsTitle;    
+      document.getElementById("predictedRisingCoinsTitle").innerText = l.predictedRisingCoinsTitle;    
       document.getElementById("pressureTitle").innerText = l.pressureTitle;    
       document.getElementById("symbol").placeholder = l.example;    
       fetchChart();    
-      updateBreakoutCoinsTable();    
+      updatePredictedRisingCoinsTable();    
     }    
     
     async function fetchChart() {    
@@ -179,9 +195,25 @@
     
         document.getElementById("priceLabel").innerHTML = (isEnglish ? lang.en.currentPrice : lang.ar.currentPrice) + currentPrice + ` <span class="${trend}">[${trendText}]</span>`;    
     
+        // Predict trend for the next hours based on the last 10 candles (approx 1 hour)    
+        const last10Prices = prices.slice(-10);    
+        const priceChanges = last10Prices.slice(1).map((price, i) => price - last10Prices[i]);    
+        const averageChange = priceChanges.reduce((sum, change) => sum + change, 0) / priceChanges.length;    
+        let trendPrediction = '';    
+        if (averageChange > 0) {    
+          trendPrediction = isEnglish ? lang.en.trendPredictionUp : lang.ar.trendPredictionUp;    
+        } else if (averageChange < 0) {    
+          trendPrediction = isEnglish ? lang.en.trendPredictionDown : lang.ar.trendPredictionDown;    
+        } else {    
+          trendPrediction = isEnglish ? "Trend Prediction for the Next Hours: Price may be stable." : "توقع الاتجاه للساعات القادمة: السعر قد يكون مستقرًا.";    
+        }    
+        document.getElementById("trendPrediction").innerText = trendPrediction;    
+    
         const maxPrice = Math.max(...prices);    
         const minPrice = Math.min(...prices);    
         const range = Math.max(maxPrice - minPrice, 0.0001);    
+        const supportLevel = minPrice + range * 0.2; // 20% from min as support    
+        const resistanceLevel = minPrice + range * 0.8; // 80% from min as resistance    
         const overbought = minPrice + range * 0.9;    
         const oversold = minPrice;    
     
@@ -233,8 +265,52 @@
               enabled: true,    
               position: 'start'    
             }    
+          },    
+          supportTriangle: {    
+            type: 'polygon',    
+            xMin: labels[90], // Start from the 90th label (right side)    
+            xMax: labels[99], // End at the 99th label (rightmost)    
+            yMin: supportLevel,    
+            yMax: supportLevel + (range * 0.05), // Small height for triangle    
+            backgroundColor: 'rgba(0, 255, 0, 0.3)',    
+            borderColor: 'green',    
+            borderWidth: 1,    
+            scale: 1,    
+            points: [    
+              { x: labels[90], y: supportLevel },    
+              { x: labels[94], y: supportLevel + (range * 0.05) },    
+              { x: labels[99], y: supportLevel }    
+            ]    
+          },    
+          resistanceTriangle: {    
+            type: 'polygon',    
+            xMin: labels[90], // Start from the 90th label (right side)    
+            xMax: labels[99], // End at the 99th label (rightmost)    
+            yMin: resistanceLevel,    
+            yMax: resistanceLevel + (range * 0.05),    
+            backgroundColor: 'rgba(255, 0, 0, 0.3)',    
+            borderColor: 'red',    
+            borderWidth: 1,    
+            scale: 1,    
+            points: [    
+              { x: labels[90], y: resistanceLevel },    
+              { x: labels[94], y: resistanceLevel + (range * 0.05) },    
+              { x: labels[99], y: resistanceLevel }    
+            ]    
           }    
         };    
+    
+        const alertDiv = document.getElementById("alert");    
+        if (Math.abs(currentPrice - supportLevel) < range * 0.01) { // Price near support    
+          alertDiv.className = "alert-bullish";    
+          alertDiv.innerText = isEnglish ? lang.en.supportAlert : lang.ar.supportAlert;    
+        } else if (Math.abs(currentPrice - resistanceLevel) < range * 0.01) { // Price near resistance    
+          alertDiv.className = "alert-bearish";    
+          alertDiv.innerText = isEnglish ? lang.en.bearishAlert : lang.ar.bearishAlert;    
+        } else {    
+          alertDiv.className = "";    
+          alertDiv.innerText = "";    
+        }    
     
         if (chart) {    
           chart.data.labels = labels;    
@@ -311,17 +387,8 @@
         const sellPressure = (sellPressureOrder * 0.6 + sellTrades * 0.4) * volumeWeight;    
         const totalPressure = buyPressure + sellPressure || 1;    
     
-        let buyPressureRatio, sellPressureRatio;    
-        if (currentPrice > previousPrice) {    
-          buyPressureRatio = ((buyPressure / totalPressure) * 100 * 2.0).toFixed(1);    
-          sellPressureRatio = ((sellPressure / totalPressure) * 100 * 0.3).toFixed(1);    
-        } else if (currentPrice < previousPrice) {    
-          buyPressureRatio = ((buyPressure / totalPressure) * 100 * 0.3).toFixed(1);    
-          sellPressureRatio = ((sellPressure / totalPressure) * 100 * 2.0).toFixed(1);    
-        } else {    
-          buyPressureRatio = ((buyPressure / totalPressure) * 100).toFixed(1);    
-          sellPressureRatio = ((sellPressure / totalPressure) * 100).toFixed(1);    
-        }    
+        let buyPressureRatio = ((buyPressure / totalPressure) * 100).toFixed(1);    
+        let sellPressureRatio = ((sellPressure / totalPressure) * 100).toFixed(1);    
     
         const totalRatio = parseFloat(buyPressureRatio) + parseFloat(sellPressureRatio);    
         if (totalRatio > 0) {    
@@ -334,7 +401,6 @@
     
         document.getElementById("pressure").innerHTML = `<div class="buy">${buyPressureText}</div><div class="sell">${sellPressureText}</div>`;    
     
-        // Add Alert for Potential Price Increase    
         const alertDiv = document.getElementById("alert");    
         if (currentPrice < previousPrice && parseFloat(buyPressureRatio) >= 70 && parseFloat(sellPressureRatio) <= 30) {    
           alertDiv.className = "alert-bullish";    
@@ -378,7 +444,7 @@
       document.getElementById("ratios").innerHTML = table;    
     }    
     
-    async function checkOversoldBreakout() {    
+    async function checkRisingCoins() {    
       try {    
         const interval = "1h";    
         const res = await fetch('https://api.binance.com/api/v3/exchangeInfo');    
@@ -390,108 +456,75 @@
         let coinsAdded = 0;    
         for (let pair of usdtPairs) {    
           try {    
-            const klineRes = await fetch(`https://api.binance.com/api/v1/klines?symbol=${pair}&interval=${interval}&limit=3`);    
-            const klines = await klineRes.json();    
-            if (klines.length < 3) {    
-              console.warn(`بيانات غير كافية لـ ${pair}: عدد الشموع ${klines.length}`);    
-              continue;    
-            }    
-    
-            const prevPrevClose = parseFloat(klines[0][4]);    
-            const prevClose = parseFloat(klines[1][4]);    
-            const currentClose = parseFloat(klines[2][4]);    
-            const currentVolume = parseFloat(klines[2][5]);    
-    
-            if (currentClose >= 1) {    
-              console.log(`تخطي ${pair}: السعر (${currentClose}) أكبر من أو يساوي 1 دولار`);    
-              continue;    
-            }    
-    
-            const priceRes = await fetch(`https://api.binance.com/api/v1/klines?symbol=${pair}&interval=${interval}&limit=100`);    
+            const priceRes = await fetch(`https://api.binance.com/api/v1/klines?symbol=${pair}&interval=${interval}&limit=10`);    
             const priceData = await priceRes.json();    
-            if (priceData.length < 100) {    
-              console.warn(`بيانات غير كافية (أقل من 100 شمعة) لـ ${pair}: عدد الشموع ${priceData.length}`);    
+            if (priceData.length < 10) {    
+              console.warn(`بيانات غير كافية (أقل من 10 شمعات) لـ ${pair}: عدد الشموع ${priceData.length}`);    
               continue;    
             }    
             const prices = priceData.map(d => parseFloat(d[4]));    
-            const volumes = priceData.slice(-10).map(d => parseFloat(d[5]));    
-            const maxPrice = Math.max(...prices);    
-            const minPrice = Math.min(...prices);    
-            const oversold = minPrice;    
-            const avgVolume = volumes.reduce((sum, v) => sum + v, 0) / volumes.length;    
+            const currentPrice = prices[prices.length - 1];    
+            const priceChanges = prices.slice(1).map((price, i) => price - prices[i]);    
+            const averageChange = priceChanges.reduce((sum, change) => sum + change, 0) / priceChanges.length;    
     
-            if (prevClose <= oversold && currentClose >= oversold && prevPrevClose <= oversold) {    
-              const breakoutRatio = ((currentClose - oversold) / oversold * 100);    
-              if (breakoutRatio >= 0.30 && breakoutRatio <= 0.60 && currentVolume > avgVolume) {    
-                const coin = pair.replace('USDT', '');    
-                console.log(`اختراق صادق مكتشف لـ ${coin}: السعر السابق=${prevClose}, السعر الحالي=${currentClose}, oversold=${oversold}, نسبة الاختراق=${breakoutRatio}%, الحجم=${currentVolume}, متوسط الحجم=${avgVolume}`);    
-                if (!breakoutCoins.some(c => c.coin === coin)) {    
-                  const timestamp = Date.now();    
-                  breakoutCoins.push({ coin, price: currentClose, timestamp, isFavorite: false });    
-                  coinsAdded++;    
-                  console.log(`تمت إضافة ${coin} إلى القائمة. العدد الإجمالي: ${breakoutCoins.length}`);    
-                } else {    
-                  breakoutCoins = breakoutCoins.map(c => c.coin === coin ? { ...c, price: currentClose, timestamp: Date.now() } : c);    
-                  console.log(`تم تحديث ${coin} في القائمة.`);    
-                }    
+            if (averageChange > 0) { // Predict rising trend    
+              const coin = pair.replace('USDT', '');    
+              console.log(`توقع ارتفاع لـ ${coin}: متوسط التغير=${averageChange}`);    
+              if (!predictedRisingCoins.some(c => c.coin === coin)) {    
+                const timestamp = Date.now();    
+                predictedRisingCoins.push({ coin, price: currentPrice, timestamp });    
+                coinsAdded++;    
+                console.log(`تمت إضافة ${coin} إلى القائمة. العدد الإجمالي: ${predictedRisingCoins.length}`);    
               } else {    
-                console.log(`تخطي ${pair}: نسبة الاختراق (${breakoutRatio}%) خارج النطاق [0.30%, 0.60%] أو حجم التداول (${currentVolume}) أقل من المتوسط (${avgVolume})`);    
+                predictedRisingCoins = predictedRisingCoins.map(c => c.coin === coin ? { ...c, price: currentPrice, timestamp: Date.now() } : c);    
+                console.log(`تم تحديث ${coin} في القائمة.`);    
               }    
             } else {    
-              console.log(`تخطي ${pair}: لم يتم اختراق خط التشبع البيعي (prevClose=${prevClose}, currentClose=${currentClose}, oversold=${oversold})`);    
+              console.log(`تخطي ${pair}: متوسط التغير (${averageChange}) لا يشير إلى ارتفاع.`);    
             }    
           } catch (err) {    
             console.error(`خطأ في معالجة ${pair}:`, err);    
           }    
         }    
         const sixHours = 6 * 60 * 60 * 1000;    
-        breakoutCoins = breakoutCoins.filter(c => Date.now() - c.timestamp <= sixHours);    
-        localStorage.setItem('breakoutCoins', JSON.stringify(breakoutCoins));    
-        console.log(`تم حفظ ${breakoutCoins.length} عملة في localStorage بعد إزالة العملات القديمة.`);    
-        updateBreakoutCoinsTable();    
+        predictedRisingCoins = predictedRisingCoins.filter(c => Date.now() - c.timestamp <= sixHours);    
+        localStorage.setItem('predictedRisingCoins', JSON.stringify(predictedRisingCoins));    
+        console.log(`تم حفظ ${predictedRisingCoins.length} عملة في localStorage بعد إزالة العملات القديمة.`);    
+        updatePredictedRisingCoinsTable();    
         console.log(`تم تحديث الجدول. عدد العملات المضافة في هذه الدورة: ${coinsAdded}`);    
       } catch (err) {    
-        console.error("خطأ في فحص الاختراق:", err);    
+        console.error("خطأ في فحص العملات المتوقع ارتفاعها:", err);    
       }    
     }    
     
-    function updateBreakoutCoinsTable() {    
+    function updatePredictedRisingCoinsTable() {    
       const l = isEnglish ? lang.en : lang.ar;    
       let table = '<table><tr><th>' + l.coin + '</th><th>' + l.price + '</th><th>' + l.action + '</th></tr>';    
-      if (breakoutCoins.length === 0) {    
+      if (predictedRisingCoins.length === 0) {    
         table += `<tr><td colspan="3">${isEnglish ? "No coins detected yet." : "لم يتم اكتشاف عملات بعد."}</td></tr>`;    
       } else {    
-        breakoutCoins.forEach((c, index) => {    
-          const favoriteText = c.isFavorite ? l.unfavorite : l.favorite;    
+        predictedRisingCoins.forEach((c, index) => {    
           table += `<tr><td>${c.coin}</td><td>${c.price.toFixed(6)}</td><td>` +    
-                   `<button onclick="toggleFavorite(${index})">${favoriteText}</button>` +    
-                   `<button onclick="deleteBreakoutCoin(${index})">${l.delete}</button></td></tr>`;    
+                   `<button onclick="deletePredictedRisingCoin(${index})">${l.delete}</button></td></tr>`;    
         });    
       }    
       table += '</table>';    
-      document.getElementById("breakoutCoins").innerHTML = table;    
-      console.log(`تم تحديث الجدول المرئي. عدد العملات المعروضة: ${breakoutCoins.length}`);    
+      document.getElementById("predictedRisingCoins").innerHTML = table;    
+      console.log(`تم تحديث الجدول المرئي. عدد العملات المعروضة: ${predictedRisingCoins.length}`);    
     }    
     
-    function deleteBreakoutCoin(index) {    
-      const deletedCoin = breakoutCoins[index].coin;    
-      breakoutCoins.splice(index, 1);    
-      localStorage.setItem('breakoutCoins', JSON.stringify(breakoutCoins));    
-      updateBreakoutCoinsTable();    
-      console.log(`تم حذف ${deletedCoin} من القائمة. العدد المتبقي: ${breakoutCoins.length}`);    
-    }    
-    
-    function toggleFavorite(index) {    
-      breakoutCoins[index].isFavorite = !breakoutCoins[index].isFavorite;    
-      localStorage.setItem('breakoutCoins', JSON.stringify(breakoutCoins));    
-      updateBreakoutCoinsTable();    
-      console.log(`تم تغيير حالة المفضلة لـ ${breakoutCoins[index].coin}`);    
+    function deletePredictedRisingCoin(index) {    
+      const deletedCoin = predictedRisingCoins[index].coin;    
+      predictedRisingCoins.splice(index, 1);    
+      localStorage.setItem('predictedRisingCoins', JSON.stringify(predictedRisingCoins));    
+      updatePredictedRisingCoinsTable();    
+      console.log(`تم حذف ${deletedCoin} من القائمة. العدد المتبقي: ${predictedRisingCoins.length}`);    
     }    
     
     fetchChart();    
     updateInterval = setInterval(fetchChart, 5000);    
-    checkOversoldBreakout();    
-    setInterval(checkOversoldBreakout, 30000);    
+    checkRisingCoins();    
+    setInterval(checkRisingCoins, 30000);    
   </script>    
 </body>    
 </html>
