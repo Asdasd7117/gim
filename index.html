@@ -50,13 +50,6 @@
     }    
     .trend-up { color: green; }    
     .trend-down { color: red; }    
-    #alert {    
-      font-size: 18px;    
-      font-weight: bold;    
-      margin: 10px;    
-      padding: 10px;    
-      border-radius: 5px;    
-    }    
     .alert-bullish {    
       background-color: rgba(0, 255, 0, 0.3);    
       color: green;    
@@ -97,7 +90,7 @@
   <div id="orderbook"></div>    
   <h3 id="ratiosTitle">نسبة الشراء والبيع (٪)</h3>    
   <div id="ratios"></div>    
-  <h3 id="predictedRisingCoinsTitle">العملات المتوقع ارتفاعها في الساعات القادمة</h3>    
+  <h3 id="predictedRisingCoinsTitle">العملات المنخفضة المتوقع ارتفاعها في الساعات القادمة</h3>    
   <div id="predictedRisingCoins"></div>    
     
   <script>    
@@ -115,7 +108,7 @@
         currentPrice: "السعر الحالي: ",    
         orderbookTitle: "إجمالي المشترين والبائعين",    
         ratiosTitle: "نسبة الشراء والبيع (٪)",    
-        predictedRisingCoinsTitle: "العملات المتوقع ارتفاعها في الساعات القادمة",    
+        predictedRisingCoinsTitle: "العملات المنخفضة المتوقع ارتفاعها في الساعات القادمة",    
         pressureTitle: "نسبة ضغط الشراء والبيع",    
         buyPressure: "ضغط الشراء: ",    
         sellPressure: "ضغط البيع: ",    
@@ -123,6 +116,9 @@
         price: "السعر",    
         action: "إجراء",    
         delete: "حذف",    
+        nearResistance: "قريبة من المقاومة",    
+        yes: "نعم",    
+        no: "لا",    
         example: "مثال: BTC",    
         breakout: "نسبة الاختراق: ",    
         trendUp: "السعر في ارتفاع",    
@@ -139,7 +135,7 @@
         currentPrice: "Current Price: ",    
         orderbookTitle: "Total Buyers and Sellers",    
         ratiosTitle: "Buy/Sell Ratio (%)",    
-        predictedRisingCoinsTitle: "Coins Expected to Rise in the Next Hours",    
+        predictedRisingCoinsTitle: "Low-Priced Coins Expected to Rise in the Next Hours",    
         pressureTitle: "Buy and Sell Pressure Ratio",    
         buyPressure: "Buy Pressure: ",    
         sellPressure: "Sell Pressure: ",    
@@ -147,6 +143,9 @@
         price: "Price",    
         action: "Action",    
         delete: "Delete",    
+        nearResistance: "Near Resistance",    
+        yes: "Yes",    
+        no: "No",    
         example: "Example: BTC",    
         breakout: "Breakout Ratio: ",    
         trendUp: "Price is Rising",    
@@ -456,6 +455,7 @@
         let coinsAdded = 0;    
         for (let pair of usdtPairs) {    
           try {    
+            // Fetch recent 10 candles to predict trend    
             const priceRes = await fetch(`https://api.binance.com/api/v1/klines?symbol=${pair}&interval=${interval}&limit=10`);    
             const priceData = await priceRes.json();    
             if (priceData.length < 10) {    
@@ -464,19 +464,40 @@
             }    
             const prices = priceData.map(d => parseFloat(d[4]));    
             const currentPrice = prices[prices.length - 1];    
+    
+            // Check if price is less than 1 USDT    
+            if (currentPrice >= 1) {    
+              console.log(`تخطي ${pair}: السعر (${currentPrice}) أكبر من أو يساوي 1 دولار`);    
+              continue;    
+            }    
+    
             const priceChanges = prices.slice(1).map((price, i) => price - prices[i]);    
             const averageChange = priceChanges.reduce((sum, change) => sum + change, 0) / priceChanges.length;    
     
+            // Fetch 100 candles to determine resistance level    
+            const priceResLong = await fetch(`https://api.binance.com/api/v1/klines?symbol=${pair}&interval=${interval}&limit=100`);    
+            const priceDataLong = await priceResLong.json();    
+            if (priceDataLong.length < 100) {    
+              console.warn(`بيانات غير كافية (أقل من 100 شمعة) لـ ${pair}: عدد الشموع ${priceDataLong.length}`);    
+              continue;    
+            }    
+            const pricesLong = priceDataLong.map(d => parseFloat(d[4]));    
+            const maxPrice = Math.max(...pricesLong);    
+            const minPrice = Math.min(...pricesLong);    
+            const range = Math.max(maxPrice - minPrice, 0.0001);    
+            const resistanceLevel = minPrice + range * 0.8; // 80% from min as resistance    
+            const isNearResistance = Math.abs(currentPrice - resistanceLevel) < (range * 0.01); // Within 1% of resistance    
+    
             if (averageChange > 0) { // Predict rising trend    
               const coin = pair.replace('USDT', '');    
-              console.log(`توقع ارتفاع لـ ${coin}: متوسط التغير=${averageChange}`);    
+              console.log(`توقع ارتفاع لـ ${coin}: متوسط التغير=${averageChange}, السعر الحالي=${currentPrice}, مستوى المقاومة=${resistanceLevel}`);    
               if (!predictedRisingCoins.some(c => c.coin === coin)) {    
                 const timestamp = Date.now();    
-                predictedRisingCoins.push({ coin, price: currentPrice, timestamp });    
+                predictedRisingCoins.push({ coin, price: currentPrice, timestamp, isNearResistance });    
                 coinsAdded++;    
                 console.log(`تمت إضافة ${coin} إلى القائمة. العدد الإجمالي: ${predictedRisingCoins.length}`);    
               } else {    
-                predictedRisingCoins = predictedRisingCoins.map(c => c.coin === coin ? { ...c, price: currentPrice, timestamp: Date.now() } : c);    
+                predictedRisingCoins = predictedRisingCoins.map(c => c.coin === coin ? { ...c, price: currentPrice, timestamp: Date.now(), isNearResistance } : c);    
                 console.log(`تم تحديث ${coin} في القائمة.`);    
               }    
             } else {    
@@ -499,12 +520,13 @@
     
     function updatePredictedRisingCoinsTable() {    
       const l = isEnglish ? lang.en : lang.ar;    
-      let table = '<table><tr><th>' + l.coin + '</th><th>' + l.price + '</th><th>' + l.action + '</th></tr>';    
+      let table = '<table><tr><th>' + l.coin + '</th><th>' + l.price + '</th><th>' + l.nearResistance + '</th><th>' + l.action + '</th></tr>';    
       if (predictedRisingCoins.length === 0) {    
-        table += `<tr><td colspan="3">${isEnglish ? "No coins detected yet." : "لم يتم اكتشاف عملات بعد."}</td></tr>`;    
+        table += `<tr><td colspan="4">${isEnglish ? "No coins detected yet." : "لم يتم اكتشاف عملات بعد."}</td></tr>`;    
       } else {    
         predictedRisingCoins.forEach((c, index) => {    
-          table += `<tr><td>${c.coin}</td><td>${c.price.toFixed(6)}</td><td>` +    
+          const nearResistanceText = c.isNearResistance ? l.yes : l.no;    
+          table += `<tr><td>${c.coin}</td><td>${c.price.toFixed(6)}</td><td>${nearResistanceText}</td><td>` +    
                    `<button onclick="deletePredictedRisingCoin(${index})">${l.delete}</button></td></tr>`;    
         });    
       }    
