@@ -116,6 +116,7 @@
         price: "السعر",    
         action: "إجراء",    
         delete: "حذف",    
+        deleteAll: "حذف الكل",    
         example: "مثال: BTC",    
         breakout: "نسبة الاختراق: ",    
         trendUp: "السعر في ارتفاع",    
@@ -140,6 +141,7 @@
         price: "Price",    
         action: "Action",    
         delete: "Delete",    
+        deleteAll: "Delete All",    
         example: "Example: BTC",    
         breakout: "Breakout Ratio: ",    
         trendUp: "Price is Rising",    
@@ -513,7 +515,7 @@
                    `<button onclick="deletePredictedRisingCoin(${index})">${l.delete}</button></td></tr>`;    
         });    
       }    
-      table += '</table>';    
+      table += '</table><button onclick="deleteAllPredictedRisingCoins()" style="margin-top: 10px;">' + l.deleteAll + '</button>';    
       document.getElementById("predictedRisingCoins").innerHTML = table;    
       console.log(`تم تحديث الجدول المرئي. عدد العملات المعروضة: ${predictedRisingCoins.length}`);    
     }    
@@ -524,6 +526,13 @@
       localStorage.setItem('predictedRisingCoins', JSON.stringify(predictedRisingCoins));    
       updatePredictedRisingCoinsTable();    
       console.log(`تم حذف ${deletedCoin} من القائمة. العدد المتبقي: ${predictedRisingCoins.length}`);    
+    }    
+    
+    function deleteAllPredictedRisingCoins() {    
+      predictedRisingCoins = [];    
+      localStorage.setItem('predictedRisingCoins', JSON.stringify(predictedRisingCoins));    
+      updatePredictedRisingCoinsTable();    
+      console.log(`تم حذف جميع العملات من القائمة. العدد المتبقي: ${predictedRisingCoins.length}`);    
     }    
     
     fetchChart();    
