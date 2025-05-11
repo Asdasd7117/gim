@@ -1,225 +1,754 @@
-<!DOCTYPE html>
-<html lang="hi">
-<head>
-  <meta charset="UTF-8">
-  <title>क्रिप्टोकरेंसी में तेजी की निगरानी</title>
-  <style>
-    body {
-      direction: ltr;
-      font-family: Arial, sans-serif;
-      text-align: center;
-      background: #f0f0f0;
-      margin: 0;
-      padding: 20px;
-    }
-    h2 {
-      color: #333;
-    }
-    #status {
-      font-size: 18px;
-      color: #333;
-      margin: 10px 0;
-    }
-    #coins {
-      max-width: 600px;
-      margin: 20px auto;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-      padding: 10px;
-      background: #fff;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    th, td {
-      padding: 8px;
-      border: 1px solid #ddd;
-      text-align: center;
-    }
-    th {
-      background-color: #4CAF50;
-      color: white;
-    }
-    tr:nth-child(even) {
-      background-color: #f2f2f2;
-    }
-    .bullish {
-      background-color: rgba(0, 255, 0, 0.1);
-    }
-    .error {
-      color: red;
-      font-weight: bold;
-      margin: 10px;
-    }
-  </style>
-</head>
-<body>
-  <h2>USDT के मुकाबले क्रिप्टोकरेंसी में तेजी की निगरानी</h2>
-  <div id="status">स्थिति: सिक्कों की निगरानी चल रही है</div>
-  <div id="error"></div>
-  <div id="coins">
-    <h3>तेजी की संभावना वाली कैंडल वाली मुद्राएं (समय-सीमा: 1 घंटा)</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>मुद्रा</th>
-          <th>मूल्य (डॉलर)</th>
-          <th>कैंडल पैटर्न</th>
-          <th>ट्रेडिंग वॉल्यूम (सापेक्ष)</th>
-        </tr>
-      </thead>
-      <tbody id="coinTable"></tbody>
-    </table>
-  </div>
-
-  <script>
-    let allCoins = [];
-    let bullishCoins = [];
-    const VOLUME_THRESHOLD = 1.5; // ट्रेडिंग वॉल्यूम ≥ 1.5x औसत
-
-    const lang = {
-      hi: {
-        statusRunning: "स्थिति: सिक्कों की निगरानी चल रही है",
-        errorNoData: "त्रुटि: पर्याप्त डेटा नहीं।",
-        noCoins: "कोई तेजी की संभावना वाली मुद्रा नहीं",
-        hammer: "हथौड़ा",
-        bullishEngulfing: "बुलिश एंगुलफिंग"
-      },
-      en: {
-        statusRunning: "Status: Monitoring coins",
-        errorNoData: "Error: Not enough data.",
-        noCoins: "No coins with bullish breakout",
-        hammer: "Hammer",
-        bullishEngulfing: "Bullish Engulfing"
-      }
-    };
-    let isEnglish = false;
-
-    function toggleLang() {
-      isEnglish = !isEnglish;
-      updateStatus();
-      updateCoinsDisplay();
-    }
-
-    function updateStatus() {
-      const statusDiv = document.getElementById('status');
-      statusDiv.innerText = isEnglish ? lang.en.statusRunning : lang.hi.statusRunning;
-    }
-
-    async function fetchAllCoins() {
-      try {
-        const res = await fetch('https://api.binance.com/api/v3/ticker/price');
-        if (!res.ok) throw new Error('Failed to fetch prices');
-        const data = await res.json();
-        allCoins = data
-          .filter(t => t.symbol.endsWith('USDT'))
-          .map(t => ({ symbol: t.symbol, price: parseFloat(t.price) }));
-      } catch (err) {
-        console.error('सिक्के प्राप्त करने में त्रुटि:', err);
-        document.getElementById('error').innerText = isEnglish ? lang.en.errorNoData : lang.hi.errorNoData;
-      }
-    }
-
-    async function calculateVolume(symbol) {
-      try {
-        const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1h&limit=24`);
-        if (!res.ok) return null;
-        const data = await res.json();
-        if (data.length < 24) return null;
-
-        const volumes = data.map(d => parseFloat(d[5]));
-        const avgVolume = volumes.reduce((sum, vol) => sum + vol, 0) / volumes.length;
-        const currentVolume = volumes[volumes.length - 1];
-        const volumeRatio = currentVolume / avgVolume;
-        return volumeRatio;
-      } catch (err) {
-        console.error(`${symbol} के लिए ट्रेडिंग वॉल्यूम की गणना में त्रुटि:`, err);
-        return null;
-      }
-    }
-
-    async function detectCandlestickPattern(symbol) {
-      try {
-        const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1h&limit=2`);
-        if (!res.ok) return null;
-        const data = await res.json();
-        if (data.length < 2) return null;
-
-        const [prevCandle, currentCandle] = data;
-        const open = parseFloat(currentCandle[1]);
-        const high = parseFloat(currentCandle[2]);
-        const low = parseFloat(currentCandle[3]);
-        const close = parseFloat(currentCandle[4]);
-        const body = Math.abs(close - open);
-        const upperShadow = high - Math.max(open, close);
-        const lowerShadow = Math.min(open, close) - low;
-
-        // Hammer
-        const isHammer = lowerShadow > 2 * body && upperShadow < 0.3 * body && close > open;
-        // Bullish Engulfing
-        const prevOpen = parseFloat(prevCandle[1]);
-        const prevClose = parseFloat(prevCandle[4]);
-        const isBullishEngulfing = prevClose < prevOpen && close > open && open <= prevClose && close >= prevOpen;
-
-        if (isHammer) return 'hammer';
-        if (isBullishEngulfing) return 'bullishEngulfing';
-        return null;
-      } catch (err) {
-        console.error(`${symbol} के लिए कैंडल पैटर्न का पता लगाने में त्रुटि:`, err);
-        return null;
-      }
-    }
-
-    async function monitorCoins() {
-      await fetchAllCoins();
-      if (!allCoins.length) return;
-
-      bullishCoins = [];
-      for (const coin of allCoins) {
-        try {
-          const volumeRatio = await calculateVolume(coin.symbol);
-          const pattern = await detectCandlestickPattern(coin.symbol);
-
-          if (volumeRatio !== null && volumeRatio >= VOLUME_THRESHOLD && pattern) {
-            bullishCoins.push({
-              symbol: coin.symbol,
-              price: coin.price,
-              pattern: pattern,
-              volumeRatio: volumeRatio
-            });
-          }
-        } catch (err) {
-          console.error(`${coin.symbol} की निगरानी में त्रुटि:`, err);
-        }
-      }
-      updateCoinsDisplay();
-    }
-
-    function updateCoinsDisplay() {
-      const coinTable = document.getElementById('coinTable');
-      let html = '';
-      if (bullishCoins.length === 0) {
-        html = `<tr><td colspan="4">${isEnglish ? lang.en.noCoins : lang.hi.noCoins}</td></tr>`;
-      } else {
-        bullishCoins.forEach(coin => {
-          const patternLabel = coin.pattern === 'hammer' ? (isEnglish ? lang.en.hammer : lang.hi.hammer) : (isEnglish ? lang.en.bullishEngulfing : lang.hi.bullishEngulfing);
-          html += `
-            <tr class="bullish">
-              <td>${coin.symbol}</td>
-              <td>${coin.price.toFixed(4)}</td>
-              <td>${patternLabel}</td>
-              <td>${coin.volumeRatio.toFixed(2)}x</td>
-            </tr>
-          `;
-        });
-      }
-      coinTable.innerHTML = html;
-    }
-
-    // पेज लोड होने पर निगरानी शुरू करें
-    monitorCoins();
-    setInterval(monitorCoins, 10000); // हर 10 सेकंड में जांच करें
-  </script>
-</body>
+<!DOCTYPE html>    
+<html lang="ar">    
+<head>    
+  <meta charset="UTF-8">    
+  <title>تحليل اتجاه السعر العام</title>    
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>    
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>    
+  <style>    
+    body {    
+      direction: rtl;    
+      font-family: Arial;    
+      text-align: center;    
+      background: #f0f0f0;    
+    }    
+    canvas {    
+      background: linear-gradient(to top, rgba(255, 0, 0, 0.15) 50%, rgba(0, 255, 0, 0.15) 50%);    
+      border: 1px solid #ccc;    
+      margin: 20px auto;    
+      display: block;    
+    }    
+    select, input[type=text], button {    
+      padding: 10px;    
+      margin: 10px;    
+      font-size: 16px;    
+    }    
+    #priceLabel {    
+      font-size: 20px;    
+      color: #000;    
+      margin-top: -10px;    
+    }    
+    table {    
+      margin: 20px auto;    
+      border-collapse: collapse;    
+      width: 90%;    
+    }    
+    th, td {    
+      border: 1px solid #ccc;    
+      padding: 8px;    
+      font-size: 14px;    
+    }    
+    th {    
+      background-color: #333;    
+      color: white;    
+    }    
+    .buy {    
+      background-color: rgba(0, 255, 0, 0.2);    
+    }    
+    .sell {    
+      background-color: rgba(255, 0, 0, 0.2);    
+    }    
+    .trend-up { color: green; }    
+    .trend-down { color: red; }    
+    .trend-neutral { color: gray; }    
+    .alert-bullish {    
+      background-color: rgba(0, 255, 0, 0.3);    
+      color: green;    
+    }    
+    .alert-bearish {    
+      background-color: rgba(255, 0, 0, 0.3);    
+      color: red;    
+    }    
+    .alert-spoofing {    
+      background-color: rgba(255, 165, 0, 0.3);    
+      color: orange;    
+    }    
+    #orderbook, #openOrders, #ratios, #spoofingAlert {    
+      font-size: 16px;    
+      margin: 10px;    
+      padding: 10px;    
+      border: 1px solid #ccc;    
+      border-radius: 5px;    
+    }    
+    .analysis {    
+      font-style: italic;    
+      color: #555;    
+    }    
+    .error {    
+      color: red;    
+      font-weight: bold;    
+      margin: 10px;    
+    }    
+  </style>    
+</head>    
+<body>    
+  <button onclick="toggleLang()">ENGLISH</button>    
+  <h2 id="title">الرسم البياني للعملة</h2>    
+  <input type="text" id="symbol" placeholder="مثال: BTC" />    
+  <select id="interval" onchange="fetchChart()">    
+    <option value="1m">1 دقيقة</option>    
+    <option value="15m">15 دقيقة</option>    
+    <option value="1h">1 ساعة</option>    
+    <option value="4h" selected>4 ساعات</option>    
+    <option value="1d">1 يوم</option>    
+  </select>    
+  <button onclick="fetchChart()" id="searchBtn">بحث</button>    
+  <div id="priceLabel">السعر الحالي: --</div>    
+  <div id="alert"></div>    
+  <div id="error"></div>    
+  <canvas id="chart" width="900" height="400"></canvas>    
+  <canvas id="positionChart" width="900" height="200"></canvas>    
+  <div id="breakout"></div>    
+  <h3 id="orderbookTitle">إجمالي المشترين والبائعين (الصفقات المنفذة)</h3>    
+  <div id="orderbook"></div>    
+  <h3 id="openOrdersTitle">الأوامر المعلقة (ضمن نطاق ±10% من السعر)</h3>    
+  <div id="openOrders"></div>    
+  <h3 id="ratiosTitle">نسبة الشراء والبيع (٪)</h3>    
+  <div id="ratios"></div>    
+  <h3 id="spoofingAlertTitle">تنبيه التلاعب المحتمل</h3>    
+  <div id="spoofingAlert"></div>    
+    
+  <script>    
+    let chart;    
+    let positionChart;    
+    let currentPair = 'BTCUSDT';    
+    let isEnglish = false;    
+    let updateInterval;    
+    let lastPrice = null;    
+    let previousOrderBook = null;    
+    let buyVolumes = [];    
+    let sellVolumes = [];    
+    const movingAverageWindow = 10;    
+    const priceRangePercent = 0.10;    
+    const priceLevels = 10;    
+    
+    const lang = {    
+      ar: {    
+        title: "الرسم البياني للعملة",    
+        search: "بحث",    
+        currentPrice: "السعر الحالي: ",    
+        orderbookTitle: "إجمالي المشترين والبائعين (الصفقات المنفذة)",    
+        openOrdersTitle: "الأوامر المعلقة (ضمن نطاق ±10% من السعر)",    
+        ratiosTitle: "نسبة الشراء والبيع (٪)",    
+        generalTrendTitle: "الاتجاه العام",    
+        comprehensiveAnalysisTitle: "تحليل شامل",    
+        whaleAnalysisTitle: "تحليل تحركات الحيتان",    
+        orderBookAnalysisTitle: "تحليل دفتر الأوامر",    
+        spoofingAlertTitle: "تنبيه التلاعب المحتمل",    
+        buyPressure: "ضغط الشراء: ",    
+        sellPressure: "ضغط البيع: ",    
+        supply: "العرض: ",    
+        demand: "الطلب: ",    
+        example: "مثال: BTC",    
+        breakout: "نسبة الاختراق: ",    
+        trendUp: "صعودي",    
+        trendDown: "هابط",    
+        trendNeutral: "محايد",    
+        bullishAlert: "إشارة صعودية: ضغط الشراء مرتفع جدًا أثناء الهبوط، السعر قد يرتفع قريبًا! ↑",    
+        bearishAlert: "إشارة هبوطية: لمس منطقة المقاومة، السعر قد يهبط! ↓",    
+        supportAlert: "إشارة صعودية: لمس منطقة الدعم، السعر قد يرتفع! ↑",    
+        generalTrendUp: "الاتجاه العام: صعودي (المتوسط المتحرك قصير الأجل أعلى من الطويل الأجل)",    
+        generalTrendDown: "الاتجاه العام: هابط (المتوسط المتحرك قصير الأجل أقل من الطويل الأجل)",    
+        generalTrendNeutral: "الاتجاه العام: محايد (المتوسطات المتحركة متقاربة)",    
+        rsiOverbought: "RSI: تشبع شرائي (قد يحدث تصحيح هابط)",    
+        rsiOversold: "RSI: تشبع بيعي (قد يحدث ارتداد صعودي)",    
+        rsiNeutral: "RSI: محايد",    
+        supportLevel: "مستوى الدعم: ",    
+        resistanceLevel: "مستوى المقاومة: ",    
+        breakoutUp: "إذا اخترق السعر المقاومة: قد يصل إلى ",    
+        breakoutDown: "إذا اخترق السعر الدعم: قد ينخفض إلى ",    
+        noBreakout: "السعر مستقر، قد يختبر المستوى مرة أخرى.",    
+        supportTests: "عدد اختبارات مستوى الدعم: ",    
+        resistanceTests: "عدد اختبارات مستوى المقاومة: ",    
+        strongLevel: "المستوى قوي (عدد اختبارات مرتفع دون اختراق)",    
+        weakLevel: "المستوى ضعيف (تم الاختراق بعد اختبارات قليلة)",    
+        whaleUp: "قد يرفع الحيتان السعر خلال الساعات القادمة (حجم تداول مرتفع وضغط شراء قوي).",    
+        whaleDown: "قد يهبط الحيتان السعر خلال الساعات القادمة (حجم تداول مرتفع وضغط بيع قوي).",    
+        noWhaleSignal: "لا توجد إشارات واضحة لتحركات الحيتان حاليًا.",    
+        cumulativeDelta: "الدلتا التراكمية: ",    
+        spoofingWarning: "تحذير: تغيرات كبيرة في دفتر الأوامر دون صفقات منفذة مقابلة، احتمال تلاعب (Spoofing)!",    
+        analysisPrefix: "تحليل: ",    
+        neededToBalance: "لتوازن السوق: يحتاج المشترون/البائعون إلى زيادة الكمية بمقدار ",    
+        errorInvalidSymbol: "خطأ: رمز العملة غير صحيح أو غير متاح. الرجاء التأكد من الرمز (مثال: ETH، XRP).",    
+        errorNoData: "خطأ: لا توجد بيانات كافية لهذه العملة في الفترة الزمنية المحددة.",    
+        pressureAnalysisUp: "تحليل الضغط: ضغط الشراء أقوى، قد يميل السعر للارتفاع.",    
+        pressureAnalysisDown: "تحليل الضغط: ضغط البيع أقوى، قد يميل السعر للانخفاض.",    
+        pressureAnalysisNeutral: "تحليل الضغط: الشراء والبيع متوازنان تقريبًا.",    
+        priceLevel: "مستوى السعر",    
+        buyOrders: "أوامر الشراء",    
+        sellOrders: "أوامر البيع",    
+        potentialPosition: "المركز المحتمل",    
+        buyWall: "تحليل: جدار شراء قوي عند مستوى ",    
+        sellWall: "تحليل: جدار بيع قوي عند مستوى "    
+      },    
+      en: {    
+        title: "Crypto Chart",    
+        search: "Search",    
+        currentPrice: "Current Price: ",    
+        orderbookTitle: "Total Buyers and Sellers (Executed Trades)",    
+        openOrdersTitle: "Open Orders (Within ±10% of Current Price)",    
+        ratiosTitle: "Buy/Sell Ratio (%)",    
+        generalTrendTitle: "General Trend",    
+        comprehensiveAnalysisTitle: "Comprehensive Analysis",    
+        whaleAnalysisTitle: "Whale Movement Analysis",    
+        orderBookAnalysisTitle: "Order Book Analysis",    
+        spoofingAlertTitle: "Potential Spoofing Alert",    
+        buyPressure: "Buy Pressure: ",    
+        sellPressure: "Sell Pressure: ",    
+        supply: "Supply: ",    
+        demand: "Demand: ",    
+        example: "Example: BTC",    
+        breakout: "Breakout Ratio: ",    
+        trendUp: "Bullish",    
+        trendDown: "Bearish",    
+        trendNeutral: "Neutral",    
+        bullishAlert: "Bullish Signal: High Buy Pressure During Downtrend, Price May Rise Soon! ↑",    
+        bearishAlert: "Bearish Signal: Hit Resistance Zone, Price May Drop! ↓",    
+        supportAlert: "Bullish Signal: Hit Support Zone, Price May Rise! ↑",    
+        generalTrendUp: "General Trend: Bullish (Short-term MA above Long-term MA)",    
+        generalTrendDown: "General Trend: Bearish (Short-term MA below Long-term MA)",    
+        generalTrendNeutral: "General Trend: Neutral (Moving Averages are close)",    
+        rsiOverbought: "RSI: Overbought (Possible bearish correction)",    
+        rsiOversold: "RSI: Oversold (Possible bullish reversal)",    
+        rsiNeutral: "RSI: Neutral",    
+        supportLevel: "Support Level: ",    
+        resistanceLevel: "Resistance Level: ",    
+        breakoutUp: "If price breaks resistance: may reach ",    
+        breakoutDown: "If price breaks support: may drop to ",    
+        noBreakout: "Price is stable, may retest the level.",    
+        supportTests: "Number of support level tests: ",    
+        resistanceTests: "Number of resistance level tests: ",    
+        strongLevel: "Level is strong (high number of tests without breakout)",    
+        weakLevel: "Level is weak (broken after few tests)",    
+        whaleUp: "Whales may push the price up in the next few hours (high volume and strong buy pressure).",    
+        whaleDown: "Whales may push the price down in the next few hours (high volume and strong sell pressure).",    
+        noWhaleSignal: "No clear whale movement signals at the moment.",    
+        cumulativeDelta: "Cumulative Delta: ",    
+        spoofingWarning: "Warning: Large changes in order book without matching executed trades, possible spoofing!",    
+        analysisPrefix: "Analysis: ",    
+        neededToBalance: "To balance market: Buyers/Sellers need to increase volume by ",    
+        errorInvalidSymbol: "Error: Invalid or unavailable symbol. Please check the symbol (e.g., ETH, XRP).",    
+        errorNoData: "Error: Not enough data for this symbol in the selected timeframe.",    
+        pressureAnalysisUp: "Pressure Analysis: Stronger buy pressure, price may rise.",    
+        pressureAnalysisDown: "Pressure Analysis: Stronger sell pressure, price may fall.",    
+        pressureAnalysisNeutral: "Pressure Analysis: Buy and sell pressures are nearly balanced.",    
+        priceLevel: "Price Level",    
+        buyOrders: "Buy Orders",    
+        sellOrders: "Sell Orders",    
+        potentialPosition: "Potential Position",    
+        buyWall: "Analysis: Strong buy wall at level ",    
+        sellWall: "Analysis: Strong sell wall at level "    
+      }    
+    };    
+    
+    function toggleLang() {    
+      isEnglish = !isEnglish;    
+      const l = isEnglish ? lang.en : lang.ar;    
+      document.body.dir = isEnglish ? "ltr" : "rtl";    
+      document.getElementById("title").innerText = l.title;    
+      document.getElementById("searchBtn").innerText = l.search;    
+      document.getElementById("orderbookTitle").innerText = l.orderbookTitle;    
+      document.getElementById("openOrdersTitle").innerText = l.openOrdersTitle;    
+      document.getElementById("ratiosTitle").innerText = l.ratiosTitle;    
+      document.getElementById("spoofingAlertTitle").innerText = l.spoofingAlertTitle;    
+      document.getElementById("symbol").placeholder = l.example;    
+      fetchChart();    
+    }    
+    
+    async function fetchChart() {    
+      const symbolInput = document.getElementById("symbol").value.toUpperCase() || "BTC";    
+      const interval = document.getElementById("interval").value;    
+      currentPair = symbolInput.endsWith("USDT") ? symbolInput : symbolInput + "USDT";    
+    
+      try {    
+        const res = await fetch(`https://api.binance.com/api/v1/klines?symbol=${currentPair}&interval=${interval}&limit=100`);    
+        if (!res.ok) {    
+          throw new Error("Invalid symbol or unavailable data");    
+        }    
+        const data = await res.json();    
+    
+        if (!data || data.length === 0) {    
+          document.getElementById("error").className = "error";    
+          document.getElementById("error").innerText = isEnglish ? lang.en.errorNoData : lang.ar.errorNoData;    
+          return;    
+        }    
+    
+        document.getElementById("error").innerText = "";    
+    
+        const labels = data.map(d => new Date(d[0]).toLocaleTimeString());    
+        const prices = data.map(d => parseFloat(d[4]));    
+        const volumes = data.map(d => parseFloat(d[5]));    
+        const currentPrice = prices[prices.length - 1];    
+        const previousPrice = prices[prices.length - 2] || currentPrice;    
+        const currentVolume = volumes[volumes.length - 1];    
+        const avgVolume = volumes.slice(-10).reduce((sum, v) => sum + v, 0) / 10;    
+        const trend = currentPrice > previousPrice ? 'trend-up' : 'trend-down';    
+        const trendText = currentPrice > previousPrice ? (isEnglish ? lang.en.trendUp : lang.ar.trendUp) : (isEnglish ? lang.en.trendDown : lang.ar.trendDown);    
+    
+        document.getElementById("priceLabel").innerHTML = (isEnglish ? lang.en.currentPrice : lang.ar.currentPrice) + currentPrice + ` <span class="${trend}">[${trendText}]</span>`;    
+    
+        let supportLevel = Infinity;    
+        let resistanceLevel = -Infinity;    
+        let supportVolume = 0;    
+        let resistanceVolume = 0;    
+        for (let i = 0; i < prices.length; i++) {    
+          const price = prices[i];    
+          const volume = volumes[i];    
+          if (volume > avgVolume * 1.5) {    
+            if (i > 0 && i < prices.length - 1 && prices[i - 1] > price && prices[i + 1] > price) {    
+              if (volume > supportVolume) {    
+                supportLevel = price;    
+                supportVolume = volume;    
+              }    
+            } else if (i > 0 && i < prices.length - 1 && prices[i - 1] < price && prices[i + 1] < price) {    
+              if (volume > resistanceVolume) {    
+                resistanceLevel = price;    
+                resistanceVolume = volume;    
+              }    
+            }    
+          }    
+        }    
+        const maxPrice = Math.max(...prices);    
+        const minPrice = Math.min(...prices);    
+        if (supportLevel === Infinity) supportLevel = minPrice;    
+        if (resistanceLevel === -Infinity) resistanceLevel = maxPrice;    
+    
+        const range = Math.max(maxPrice - minPrice, 0.0001);    
+        const overbought = minPrice + range * 0.9;    
+        const oversold = minPrice;    
+    
+        let breakoutText = "";    
+        if (currentPrice > overbought) {    
+          const ratio = ((currentPrice - overbought) / overbought * 100).toFixed(2);    
+          breakoutText = (isEnglish ? lang.en.breakout : lang.ar.breakout) + ratio + "% " + (isEnglish ? "(Overbought)" : "(تشبع شرائي)");    
+        } else if (currentPrice < oversold) {    
+          const ratio = ((oversold - currentPrice) / oversold * 100).toFixed(2);    
+          breakoutText = (isEnglish ? lang.en.breakout : lang.ar.breakout) + ratio + "% " + (isEnglish ? "(Oversold)" : "(تشبع بيعي)");    
+        }    
+        document.getElementById("breakout").innerText = breakoutText;    
+    
+        const annotations = {    
+          priceLine: {    
+            type: 'line',    
+            yMin: currentPrice,    
+            yMax: currentPrice,    
+            borderColor: 'black',    
+            borderWidth: 2,    
+            label: {    
+              content: currentPrice.toFixed(2),    
+              enabled: true,    
+              position: 'start'    
+            }    
+          },    
+          supportLine: {    
+            type: 'line',    
+            yMin: supportLevel,    
+            yMax: supportLevel,    
+            borderColor: 'green',    
+            borderWidth: 1,    
+            borderDash: [5, 5],    
+            label: {    
+              content: (isEnglish ? lang.en.supportLevel : lang.ar.supportLevel) + supportLevel.toFixed(2),    
+              enabled: true,    
+              position: 'start'    
+            }    
+          },    
+          resistanceLine: {    
+            type: 'line',    
+            yMin: resistanceLevel,    
+            yMax: resistanceLevel,    
+            borderColor: 'red',    
+            borderWidth: 1,    
+            borderDash: [5, 5],    
+            label: {    
+              content: (isEnglish ? lang.en.resistanceLevel : lang.ar.resistanceLevel) + resistanceLevel.toFixed(2),    
+              enabled: true,    
+              position: 'start'    
+            }    
+          },    
+          overboughtLine: {    
+            type: 'line',    
+            yMin: overbought,    
+            yMax: overbought,    
+            borderColor: 'green',    
+            borderWidth: 1,    
+            borderDash: [5, 5],    
+            label: {    
+              content: isEnglish ? 'Overbought' : 'تشبع شرائي',    
+              enabled: true,    
+              position: 'start'    
+            }    
+          },    
+          oversoldLine: {    
+            type: 'line',    
+            yMin: oversold,    
+            yMax: oversold,    
+            borderColor: 'red',    
+            borderWidth: 1,    
+            borderDash: [5, 5],    
+            label: {    
+              content: isEnglish ? 'Oversold' : 'تشبع بيعي',    
+              enabled: true,    
+              position: 'start'    
+            }    
+          }    
+        };    
+    
+        const alertDiv = document.getElementById("alert");    
+        if (Math.abs(currentPrice - previousPrice) < range * 0.01) {    
+          alertDiv.className = "";    
+          alertDiv.innerText = "";    
+        } else if (currentPrice < previousPrice) {    
+          alertDiv.className = "alert-bullish";    
+          alertDiv.innerText = isEnglish ? lang.en.bullishAlert : lang.ar.bullishAlert;    
+        } else {    
+          alertDiv.className = "";    
+          alertDiv.innerText = "";    
+        }    
+    
+        if (chart) {    
+          chart.destroy();    
+        }    
+        chart = new Chart(document.getElementById("chart").getContext("2d"), {    
+          type: 'line',    
+          data: {    
+            labels: labels,    
+            datasets: [{    
+              label: 'Price',    
+              data: prices,    
+              borderColor: 'blue',    
+              pointBackgroundColor: prices.map(p => p >= currentPrice ? 'green' : 'red'),    
+              fill: false,    
+              tension: 0.3    
+            }]    
+          },    
+          options: {    
+            responsive: true,    
+            scales: {    
+              y: {    
+                beginAtZero: false    
+              }    
+            },    
+            plugins: {    
+              annotation: {    
+                annotations: annotations    
+              }    
+            }    
+          }    
+        });    
+    
+        fetchOrderBookTotal(currentPair, currentPrice, previousPrice, currentVolume, avgVolume);    
+        fetchRatios(currentPair);    
+        lastPrice = currentPrice;    
+      } catch (err) {    
+        console.error("خطأ في جلب البيانات:", err);    
+        document.getElementById("error").className = "error";    
+        document.getElementById("error").innerText = isEnglish ? lang.en.errorInvalidSymbol : lang.ar.errorInvalidSymbol;    
+      }    
+    }    
+    
+    async function fetchOrderBookTotal(pair, currentPrice, previousPrice, currentVolume, avgVolume) {    
+      try {    
+        const resOrder = await fetch(`https://api.binance.com/api/v3/depth?symbol=${pair}&limit=100`);    
+        if (!resOrder.ok) throw new Error("Failed to fetch order book");    
+        const dataOrder = await resOrder.json();    
+        const resTrades = await fetch(`https://api.binance.com/api/v3/trades?symbol=${pair}&limit=100`);    
+        if (!resTrades.ok) throw new Error("Failed to fetch trades");    
+        const dataTrades = await resTrades.json();    
+    
+        if (!dataOrder || !dataTrades) {    
+          document.getElementById("error").className = "error";    
+          document.getElementById("error").innerText = isEnglish ? lang.en.errorNoData : lang.ar.errorNoData;    
+          return;    
+        }    
+    
+        // Calculate executed trades    
+        const totalBuy = dataTrades    
+          .filter(t => t.isBuyerMaker === false)    
+          .reduce((sum, t) => sum + parseFloat(t.qty), 0);    
+        const totalSell = dataTrades    
+          .filter(t => t.isBuyerMaker === true)    
+          .reduce((sum, t) => sum + parseFloat(t.qty), 0);    
+    
+        buyVolumes.push(totalBuy);    
+        sellVolumes.push(totalSell);    
+        if (buyVolumes.length > movingAverageWindow) buyVolumes.shift();    
+        if (sellVolumes.length > movingAverageWindow) sellVolumes.shift();    
+        const movingAvgBuy = buyVolumes.length ? buyVolumes.reduce((sum, v) => sum + v, 0) / buyVolumes.length : totalBuy;    
+        const movingAvgSell = sellVolumes.length ? sellVolumes.reduce((sum, v) => sum + v, 0) / sellVolumes.length : totalSell;    
+    
+        const buyText = (isEnglish ? "Total Buy Quantity: " : "إجمالي كمية الشراء: ") + movingAvgBuy.toFixed(2);    
+        const sellText = (isEnglish ? "Total Sell Quantity: " : "إجمالي كمية البيع: ") + movingAvgSell.toFixed(2);    
+    
+        let analysisText = "";    
+        const volumeDiff = Math.abs(movingAvgBuy - movingAvgSell);    
+        if (volumeDiff > 0) {    
+          const neededVolume = volumeDiff * 1.5;    
+          analysisText = `<div class="analysis">${(isEnglish ? lang.en.analysisPrefix : lang.ar.analysisPrefix)}${(isEnglish ? lang.en.neededToBalance : lang.ar.neededToBalance)}${neededVolume.toFixed(2)} ${currentPair.split("USDT")[0]}</div>`;    
+        }    
+    
+        document.getElementById("orderbook").innerHTML = `<div class="buy">${buyText}</div><div class="sell">${sellText}</div>${analysisText}`;    
+    
+        // Calculate open orders within ±10% of the current price    
+        const priceRange = currentPrice * priceRangePercent;    
+        const lowerBound = currentPrice - priceRange;    
+        const upperBound = currentPrice + priceRange;    
+    
+        const openBuyOrders = dataOrder.bids    
+          .filter(bid => parseFloat(bid[0]) >= lowerBound && parseFloat(bid[0]) <= currentPrice)    
+          .reduce((sum, bid) => sum + parseFloat(bid[1]), 0);    
+        const openSellOrders = dataOrder.asks    
+          .filter(ask => parseFloat(ask[0]) <= upperBound && parseFloat(ask[0]) >= currentPrice)    
+          .reduce((sum, ask) => sum + parseFloat(ask[1]), 0);    
+    
+        const openBuyText = (isEnglish ? "Open Buy Orders: " : "أوامر الشراء المعلقة: ") + openBuyOrders.toFixed(2);    
+        const openSellText = (isEnglish ? "Open Sell Orders: " : "أوامر البيع المعلقة: ") + openSellOrders.toFixed(2);    
+    
+        // Calculate potential positions and levels    
+        const priceStep = priceRange / priceLevels;    
+        let buyLevels = Array(priceLevels).fill(0);    
+        let sellLevels = Array(priceLevels).fill(0);    
+        let buyPriceLevels = [];    
+        let sellPriceLevels = [];    
+        let potentialPositions = Array(priceLevels * 2).fill(0);    
+    
+        // Calculate buy orders by price level (below current price)    
+        for (let i = 0; i < priceLevels; i++) {    
+          const levelLowerBound = currentPrice - (i + 1) * priceStep;    
+          const levelUpperBound = currentPrice - i * priceStep;    
+          const levelBuyOrders = dataOrder.bids    
+            .filter(bid => parseFloat(bid[0]) >= levelLowerBound && parseFloat(bid[0]) < levelUpperBound)    
+            .reduce((sum, bid) => sum + parseFloat(bid[1]), 0);    
+          buyLevels[i] = levelBuyOrders;    
+          buyPriceLevels[i] = ((levelLowerBound + levelUpperBound) / 2).toFixed(2);    
+          potentialPositions[i] = levelBuyOrders; // Potential buy position    
+        }    
+    
+        // Calculate sell orders by price level (above current price)    
+        for (let i = 0; i < priceLevels; i++) {    
+          const levelLowerBound = currentPrice + i * priceStep;    
+          const levelUpperBound = currentPrice + (i + 1) * priceStep;    
+          const levelSellOrders = dataOrder.asks    
+            .filter(ask => parseFloat(ask[0]) >= levelLowerBound && parseFloat(ask[0]) < levelUpperBound)    
+            .reduce((sum, ask) => sum + parseFloat(ask[1]), 0);    
+          sellLevels[i] = levelSellOrders;    
+          sellPriceLevels[i] = ((levelLowerBound + levelUpperBound) / 2).toFixed(2);    
+          potentialPositions[priceLevels + i] = -levelSellOrders; // Potential sell position (negative)    
+        }    
+    
+        // Create the table for open orders by price level with potential positions    
+        let table = '<table><tr><th>' + (isEnglish ? lang.en.priceLevel : lang.ar.priceLevel) + '</th><th class="buy">' + (isEnglish ? lang.en.buyOrders : lang.ar.buyOrders) + '</th><th class="sell">' + (isEnglish ? lang.en.sellOrders : lang.ar.sellOrders) + '</th><th>' + (isEnglish ? lang.en.potentialPosition : lang.ar.potentialPosition) + '</th></tr>';    
+        for (let i = 0; i < priceLevels; i++) {    
+          table += `<tr><td>${buyPriceLevels[i]}</td><td class="buy">${buyLevels[i].toFixed(2)}</td><td class="sell">0.00</td><td>${potentialPositions[i].toFixed(2)}</td></tr>`;    
+        }    
+        for (let i = 0; i < priceLevels; i++) {    
+          table += `<tr><td>${sellPriceLevels[i]}</td><td class="buy">0.00</td><td class="sell">${sellLevels[i].toFixed(2)}</td><td>${potentialPositions[priceLevels + i].toFixed(2)}</td></tr>`;    
+        }    
+        table += '</table>';    
+    
+        let pressureAnalysis = "";    
+        const pressureDiff = openBuyOrders - openSellOrders;    
+        if (pressureDiff > 0) {    
+          pressureAnalysis = `<div class="analysis">${(isEnglish ? lang.en.pressureAnalysisUp : lang.ar.pressureAnalysisUp)}</div>`;    
+        } else if (pressureDiff < 0) {    
+          pressureAnalysis = `<div class="analysis">${(isEnglish ? lang.en.pressureAnalysisDown : lang.ar.pressureAnalysisDown)}</div>`;    
+        } else {    
+          pressureAnalysis = `<div class="analysis">${(isEnglish ? lang.en.pressureAnalysisNeutral : lang.ar.pressureAnalysisNeutral)}</div>`;    
+        }    
+    
+        // Detect buy/sell walls    
+        let wallAnalysis = "";    
+        const maxBuyLevel = Math.max(...buyLevels);    
+        const maxSellLevel = Math.max(...sellLevels);    
+        const buyWallThreshold = openBuyOrders * 0.3; // 30% of total buy orders    
+        const sellWallThreshold = openSellOrders * 0.3; // 30% of total sell orders    
+        if (maxBuyLevel > buyWallThreshold) {    
+          const buyWallLevel = buyPriceLevels[buyLevels.indexOf(maxBuyLevel)];    
+          wallAnalysis += `<div class="analysis">${(isEnglish ? lang.en.buyWall : lang.ar.buyWall)}${buyWallLevel}</div>`;    
+        }    
+        if (maxSellLevel > sellWallThreshold) {    
+          const sellWallLevel = sellPriceLevels[sellLevels.indexOf(maxSellLevel)];    
+          wallAnalysis += `<div class="analysis">${(isEnglish ? lang.en.sellWall : lang.ar.sellWall)}${sellWallLevel}</div>`;    
+        }    
+    
+        document.getElementById("openOrders").innerHTML = `<div class="buy">${openBuyText}</div><div class="sell">${openSellText}</div>${table}${pressureAnalysis}${wallAnalysis}`;    
+    
+        // Create or update position chart with lines for executed trades and bars for open orders    
+        const allPriceLevels = [...buyPriceLevels, ...sellPriceLevels];    
+        const executedBuyData = Array(allPriceLevels.length).fill(movingAvgBuy / allPriceLevels.length);    
+        const executedSellData = Array(allPriceLevels.length).fill(-movingAvgSell / allPriceLevels.length);    
+        const openOrderData = [...buyLevels, ...sellLevels.map(v => -v)];    
+    
+        if (positionChart) {    
+          positionChart.destroy();    
+        }    
+        positionChart = new Chart(document.getElementById("positionChart").getContext("2d"), {    
+          type: 'bar', // Using bar for open orders, lines overlaid for executed trades    
+          data: {    
+            labels: allPriceLevels,    
+            datasets: [    
+              {    
+                type: 'line',    
+                label: isEnglish ? 'Executed Buy Position' : 'موقف الشراء المنفذ',    
+                data: executedBuyData,    
+                borderColor: 'green',    
+                fill: false,    
+                tension: 0.1,    
+                yAxisID: 'y1'    
+              },    
+              {    
+                type: 'line',    
+                label: isEnglish ? 'Executed Sell Position' : 'موقف البيع المنفذ',    
+                data: executedSellData,    
+                borderColor: 'red',    
+                fill: false,    
+                tension: 0.1,    
+                yAxisID: 'y1'    
+              },    
+              {    
+                type: 'line',    
+                label: isEnglish ? 'Market Price' : 'سعر السوق',    
+                data: Array(allPriceLevels.length).fill(currentPrice),    
+                borderColor: 'black',    
+                fill: false,    
+                tension: 0,    
+                yAxisID: 'y1'    
+              },    
+              {    
+                type: 'bar',    
+                label: isEnglish ? 'Open Buy Orders' : 'أوامر الشراء المعلقة',    
+                data: buyLevels,    
+                backgroundColor: 'rgba(0, 255, 0, 0.7)',    
+                borderColor: 'rgba(0, 255, 0, 1)',    
+                borderWidth: 1,    
+                yAxisID: 'y'    
+              },    
+              {    
+                type: 'bar',    
+                label: isEnglish ? 'Open Sell Orders' : 'أوامر البيع المعلقة',    
+                data: sellLevels.map(v => -v),    
+                backgroundColor: 'rgba(255, 0, 0, 0.7)',    
+                borderColor: 'rgba(255, 0, 0, 1)',    
+                borderWidth: 1,    
+                yAxisID: 'y'    
+              }    
+            ]    
+          },    
+          options: {    
+            responsive: true,    
+            scales: {    
+              x: {    
+                title: {    
+                  display: true,    
+                  text: isEnglish ? 'Price Levels' : 'مستويات السعر'    
+                },    
+                ticks: {    
+                  autoSkip: false,    
+                  maxRotation: 0,    
+                  minRotation: 0    
+                }    
+              },    
+              y: {    
+                title: {    
+                  display: true,    
+                  text: isEnglish ? 'Open Order Volume' : 'حجم الأوامر المعلقة'    
+                },    
+                beginAtZero: true,    
+                position: 'left'    
+              },    
+              y1: {    
+                title: {    
+                  display: true,    
+                  text: isEnglish ? 'Executed Position / Price' : 'الموقف المنفذ / السعر'    
+                },    
+                beginAtZero: false,    
+                position: 'right',    
+                ticks: {    
+                  callback: function(value) {    
+                    return value === currentPrice ? value.toFixed(2) : value;    
+                  }    
+                }    
+              }    
+            },    
+            plugins: {    
+              legend: {    
+                display: true    
+              }    
+            }    
+          }    
+        });    
+    
+        // Detect potential spoofing    
+        if (previousOrderBook) {    
+          const prevTotalBuyOrders = previousOrderBook.bids.reduce((sum, b) => sum + parseFloat(b[1]), 0);    
+          const prevTotalSellOrders = previousOrderBook.asks.reduce((sum, a) => sum + parseFloat(a[1]), 0);    
+          const totalBuyOrders = dataOrder.bids.reduce((sum, b) => sum + parseFloat(b[1]), 0);    
+          const totalSellOrders = dataOrder.asks.reduce((sum, a) => sum + parseFloat(a[1]), 0);    
+          const buyChange = Math.abs(totalBuyOrders - prevTotalBuyOrders) / (prevTotalBuyOrders || 1) * 100;    
+          const sellChange = Math.abs(totalSellOrders - prevTotalSellOrders) / (prevTotalSellOrders || 1) * 100;    
+          const totalTradeVolume = movingAvgBuy + movingAvgSell;    
+          const orderChangeThreshold = 50;    
+          const tradeVolumeThreshold = totalTradeVolume * 0.1;    
+    
+          if ((buyChange > orderChangeThreshold || sellChange > orderChangeThreshold) && totalTradeVolume < tradeVolumeThreshold) {    
+            document.getElementById("spoofingAlert").className = "alert-spoofing";    
+            document.getElementById("spoofingAlert").innerText = isEnglish ? lang.en.spoofingWarning : lang.ar.spoofingWarning;    
+          } else {    
+            document.getElementById("spoofingAlert").className = "";    
+            document.getElementById("spoofingAlert").innerText = "";    
+          }    
+        }    
+        previousOrderBook = dataOrder;    
+    
+        const alertDiv = document.getElementById("alert");    
+        if (currentPrice < previousPrice) {    
+          alertDiv.className = "alert-bullish";    
+          alertDiv.innerText = isEnglish ? lang.en.bullishAlert : lang.ar.bullishAlert;    
+        } else {    
+          alertDiv.className = "";    
+          alertDiv.innerText = "";    
+        }    
+      } catch (err) {    
+        console.error(`خطأ في جلب دفتر الطلبات أو التداولات لـ ${pair}:`, err);    
+        document.getElementById("error").className = "error";    
+        document.getElementById("error").innerText = isEnglish ? lang.en.errorInvalidSymbol : lang.ar.errorInvalidSymbol;    
+      }    
+    }    
+    
+    async function fetchRatios(pair) {    
+      const intervals = ["1m", "15m", "1h", "4h", "1d"];    
+      let table = '<table><tr><th>' + (isEnglish ? "Interval" : "الفترة") + '</th><th class="buy">' + (isEnglish ? "Buy %" : "شراء %") + '</th><th class="sell">' + (isEnglish ? "Sell %" : "بيع %") + '</th></tr>';    
+    
+      for (let interval of intervals) {    
+        try {    
+          const res = await fetch(`https://api.binance.com/api/v1/klines?symbol=${pair}&interval=${interval}&limit=50`);    
+          if (!res.ok) continue;    
+          const data = await res.json();    
+          if (!data || data.length === 0) continue;    
+    
+          let buy = 0, sell = 0;    
+          for (let kline of data) {    
+            const open = parseFloat(kline[1]);    
+            const close = parseFloat(kline[4]);    
+            if (close > open) buy++;    
+            else if (close < open) sell++;    
+          }    
+    
+          const total = buy + sell || 1;    
+          const buyRatio = ((buy / total) * 100).toFixed(1);    
+          const sellRatio = ((sell / total) * 100).toFixed(1);    
+          table += `<tr><td>${interval}</td><td class="buy">${buyRatio}%</td><td class="sell">${sellRatio}%</td></tr>`;    
+        } catch (err) {    
+          console.error(`خطأ في جلب نسب الشراء/البيع لـ ${pair} على فترة ${interval}:`, err);    
+        }    
+      }    
+    
+      table += '</table>';    
+      document.getElementById("ratios").innerHTML = table;    
+    }    
+    
+    fetchChart();    
+    updateInterval = setInterval(fetchChart, 3000);    
+  </script>    
+</body>    
 </html>
