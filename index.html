@@ -121,6 +121,8 @@
     const movingAverageWindow = 10;    
     const priceRangePercent = 0.10;    
     const priceLevels = 10;    
+    let chartLabels = [];    
+    let chartPrices = [];    
     
     const lang = {    
       ar: {    
@@ -275,11 +277,11 @@
     
         document.getElementById("error").innerText = "";    
     
-        const labels = data.map(d => new Date(d[0]).toLocaleTimeString());    
-        const prices = data.map(d => parseFloat(d[4]));    
+        chartLabels = data.map(d => new Date(d[0]).toLocaleTimeString());    
+        chartPrices = data.map(d => parseFloat(d[4]));    
         const volumes = data.map(d => parseFloat(d[5]));    
-        const currentPrice = prices[prices.length - 1];    
-        const previousPrice = prices[prices.length - 2] || currentPrice;    
+        const currentPrice = chartPrices[chartPrices.length - 1];    
+        const previousPrice = chartPrices[chartPrices.length - 2] || currentPrice;    
         const currentVolume = volumes[volumes.length - 1];    
         const avgVolume = volumes.slice(-10).reduce((sum, v) => sum + v, 0) / 10;    
         const trend = currentPrice > previousPrice ? 'trend-up' : 'trend-down';    
@@ -291,16 +293,16 @@
         let resistanceLevel = -Infinity;    
         let supportVolume = 0;    
         let resistanceVolume = 0;    
-        for (let i = 0; i < prices.length; i++) {    
-          const price = prices[i];    
+        for (let i = 0; i < chartPrices.length; i++) {    
+          const price = chartPrices[i];    
           const volume = volumes[i];    
           if (volume > avgVolume * 1.5) {    
-            if (i > 0 && i < prices.length - 1 && prices[i - 1] > price && prices[i + 1] > price) {    
+            if (i > 0 && i < chartPrices.length - 1 && chartPrices[i - 1] > price && chartPrices[i + 1] > price) {    
               if (volume > supportVolume) {    
                 supportLevel = price;    
                 supportVolume = volume;    
               }    
-            } else if (i > 0 && i < prices.length - 1 && prices[i - 1] < price && prices[i + 1] < price) {    
+            } else if (i > 0 && i < chartPrices.length - 1 && chartPrices[i - 1] < price && chartPrices[i + 1] < price) {    
               if (volume > resistanceVolume) {    
                 resistanceLevel = price;    
                 resistanceVolume = volume;    
@@ -308,8 +310,8 @@
             }    
           }    
         }    
-        const maxPrice = Math.max(...prices);    
-        const minPrice = Math.min(...prices);    
+        const maxPrice = Math.max(...chartPrices);    
+        const minPrice = Math.min(...chartPrices);    
         if (supportLevel === Infinity) supportLevel = minPrice;    
         if (resistanceLevel === -Infinity) resistanceLevel = maxPrice;    
     
@@ -412,12 +414,12 @@
         chart = new Chart(document.getElementById("chart").getContext("2d"), {    
           type: 'line',    
           data: {    
-            labels: labels,    
+            labels: chartLabels,    
             datasets: [{    
               label: 'Price',    
-              data: prices,    
+              data: chartPrices,    
               borderColor: 'blue',    
-              pointBackgroundColor: prices.map(p => p >= currentPrice ? 'green' : 'red'),    
+              pointBackgroundColor: chartPrices.map(p => p >= currentPrice ? 'green' : 'red'),    
               fill: false,    
               tension: 0.3    
             }]    
@@ -573,64 +575,60 @@
     
         document.getElementById("openOrders").innerHTML = `<div class="buy">${openBuyText}</div><div class="sell">${openSellText}</div>${table}${pressureAnalysis}${wallAnalysis}`;    
     
-        // Create or update position chart with lines for executed trades and bars for open orders    
-        const allPriceLevels = [...buyPriceLevels, ...sellPriceLevels];    
-        const executedBuyData = Array(allPriceLevels.length).fill(movingAvgBuy / allPriceLevels.length);    
-        const executedSellData = Array(allPriceLevels.length).fill(-movingAvgSell / allPriceLevels.length);    
-        const openOrderData = [...buyLevels, ...sellLevels.map(v => -v)];    
+        // Create or update position chart with price line and horizontal lines for open orders    
+        const priceData = chartPrices;    
+        const labels = chartLabels;    
+    
+        // Create annotations for open order levels    
+        let annotations = [];    
+        for (let i = 0; i < priceLevels; i++) {    
+          if (buyLevels[i] > 0) {    
+            annotations.push({    
+              type: 'line',    
+              yMin: parseFloat(buyPriceLevels[i]),    
+              yMax: parseFloat(buyPriceLevels[i]),    
+              borderColor: 'green',    
+              borderWidth: 2,    
+              borderDash: [5, 5],    
+              label: {    
+                content: (isEnglish ? 'Buy: ' : 'شراء: ') + buyLevels[i].toFixed(2),    
+                enabled: true,    
+                position: 'start'    
+              }    
+            });    
+          }    
+          if (sellLevels[i] > 0) {    
+            annotations.push({    
+              type: 'line',    
+              yMin: parseFloat(sellPriceLevels[i]),    
+              yMax: parseFloat(sellPriceLevels[i]),    
+              borderColor: 'red',    
+              borderWidth: 2,    
+              borderDash: [5, 5],    
+              label: {    
+                content: (isEnglish ? 'Sell: ' : 'بيع: ') + sellLevels[i].toFixed(2),    
+                enabled: true,    
+                position: 'start'    
+              }    
+            });    
+          }    
+        }    
     
         if (positionChart) {    
           positionChart.destroy();    
         }    
         positionChart = new Chart(document.getElementById("positionChart").getContext("2d"), {    
-          type: 'bar', // Using bar for open orders, lines overlaid for executed trades    
+          type: 'line',    
           data: {    
-            labels: allPriceLevels,    
+            labels: labels,    
             datasets: [    
               {    
-                type: 'line',    
-                label: isEnglish ? 'Executed Buy Position' : 'موقف الشراء المنفذ',    
-                data: executedBuyData,    
-                borderColor: 'green',    
-                fill: false,    
-                tension: 0.1,    
-                yAxisID: 'y1'    
-              },    
-              {    
-                type: 'line',    
-                label: isEnglish ? 'Executed Sell Position' : 'موقف البيع المنفذ',    
-                data: executedSellData,    
-                borderColor: 'red',    
-                fill: false,    
-                tension: 0.1,    
-                yAxisID: 'y1'    
-              },    
-              {    
-                type: 'line',    
                 label: isEnglish ? 'Market Price' : 'سعر السوق',    
-                data: Array(allPriceLevels.length).fill(currentPrice),    
+                data: priceData,    
                 borderColor: 'black',    
                 fill: false,    
-                tension: 0,    
+                tension: 0.3,    
                 yAxisID: 'y1'    
-              },    
-              {    
-                type: 'bar',    
-                label: isEnglish ? 'Open Buy Orders' : 'أوامر الشراء المعلقة',    
-                data: buyLevels,    
-                backgroundColor: 'rgba(0, 255, 0, 0.7)',    
-                borderColor: 'rgba(0, 255, 0, 1)',    
-                borderWidth: 1,    
-                yAxisID: 'y'    
-              },    
-              {    
-                type: 'bar',    
-                label: isEnglish ? 'Open Sell Orders' : 'أوامر البيع المعلقة',    
-                data: sellLevels.map(v => -v),    
-                backgroundColor: 'rgba(255, 0, 0, 0.7)',    
-                borderColor: 'rgba(255, 0, 0, 1)',    
-                borderWidth: 1,    
-                yAxisID: 'y'    
               }    
             ]    
           },    
@@ -640,10 +638,10 @@
               x: {    
                 title: {    
                   display: true,    
-                  text: isEnglish ? 'Price Levels' : 'مستويات السعر'    
+                  text: isEnglish ? 'Time' : 'الوقت'    
                 },    
                 ticks: {    
-                  autoSkip: false,    
+                  autoSkip: true,    
                   maxRotation: 0,    
                   minRotation: 0    
                 }    
@@ -651,26 +649,29 @@
               y: {    
                 title: {    
                   display: true,    
-                  text: isEnglish ? 'Open Order Volume' : 'حجم الأوامر المعلقة'    
+                  text: isEnglish ? 'Open Order Levels' : 'مستويات الأوامر المعلقة'    
                 },    
-                beginAtZero: true,    
-                position: 'left'    
+                beginAtZero: false,    
+                position: 'left',    
+                ticks: {    
+                  callback: function(value) {    
+                    return value.toFixed(2);    
+                  }    
+                }    
               },    
               y1: {    
                 title: {    
                   display: true,    
-                  text: isEnglish ? 'Executed Position / Price' : 'الموقف المنفذ / السعر'    
+                  text: isEnglish ? 'Price' : 'السعر'    
                 },    
                 beginAtZero: false,    
-                position: 'right',    
-                ticks: {    
-                  callback: function(value) {    
-                    return value === currentPrice ? value.toFixed(2) : value;    
-                  }    
-                }    
+                position: 'right'    
               }    
             },    
             plugins: {    
+              annotation: {    
+                annotations: annotations    
+              },    
               legend: {    
                 display: true    
               }    
