@@ -59,11 +59,7 @@
       background-color: rgba(255, 0, 0, 0.3);    
       color: red;    
     }    
-    .alert-spoofing {    
-      background-color: rgba(255, 165, 0, 0.3);    
-      color: orange;    
-    }    
-    #orderbook, #openOrders, #ratios, #spoofingAlert {    
+    #orderbook, #openOrders, #ratios, #oversoldTable {    
       font-size: 16px;    
       margin: 10px;    
       padding: 10px;    
@@ -78,6 +74,15 @@
       color: red;    
       font-weight: bold;    
       margin: 10px;    
+    }    
+    #clearOversoldBtn {    
+      background-color: #ff4444;    
+      color: white;    
+      border: none;    
+      cursor: pointer;    
+    }    
+    #clearOversoldBtn:hover {    
+      background-color: #cc0000;    
     }    
   </style>    
 </head>    
@@ -105,8 +110,9 @@
   <div id="openOrders"></div>    
   <h3 id="ratiosTitle">نسبة الشراء والبيع (٪)</h3>    
   <div id="ratios"></div>    
-  <h3 id="spoofingAlertTitle">تنبيه التلاعب المحتمل</h3>    
-  <div id="spoofingAlert"></div>    
+  <h3 id="oversoldTitle">العملات عند خط التشبع البيعي (4 ساعات)</h3>    
+  <div id="oversoldTable"></div>    
+  <button id="clearOversoldBtn" onclick="clearOversoldTable()">حذف الجميع</button>    
     
   <script>    
     let chart;    
@@ -123,6 +129,7 @@
     const priceLevels = 10;    
     let chartLabels = [];    
     let chartPrices = [];    
+    let oversoldEvents = [];    
     
     const lang = {    
       ar: {    
@@ -132,11 +139,15 @@
         orderbookTitle: "إجمالي المشترين والبائعين (الصفقات المنفذة)",    
         openOrdersTitle: "الأوامر المعلقة (ضمن نطاق ±10% من السعر)",    
         ratiosTitle: "نسبة الشراء والبيع (٪)",    
+        oversoldTitle: "العملات عند خط التشبع البيعي (4 ساعات)",    
+        clearOversold: "حذف الجميع",    
+        symbolHeader: "العملة",    
+        priceHeader: "السعر الحالي",    
+        timestampHeader: "الوقت",    
         generalTrendTitle: "الاتجاه العام",    
         comprehensiveAnalysisTitle: "تحليل شامل",    
         whaleAnalysisTitle: "تحليل تحركات الحيتان",    
         orderBookAnalysisTitle: "تحليل دفتر الأوامر",    
-        spoofingAlertTitle: "تنبيه التلاعب المحتمل",    
         buyPressure: "ضغط الشراء: ",    
         sellPressure: "ضغط البيع: ",    
         supply: "العرض: ",    
@@ -168,14 +179,8 @@
         whaleDown: "قد يهبط الحيتان السعر خلال الساعات القادمة (حجم تداول مرتفع وضغط بيع قوي).",    
         noWhaleSignal: "لا توجد إشارات واضحة لتحركات الحيتان حاليًا.",    
         cumulativeDelta: "الدلتا التراكمية: ",    
-        spoofingWarning: "تحذير: تغيرات كبيرة في دفتر الأوامر دون صفقات منفذة مقابلة، احتمال تلاعب (Spoofing)!",    
-        analysisPrefix: "تحليل: ",    
-        neededToBalance: "لتوازن السوق: يحتاج المشترون/البائعون إلى زيادة الكمية بمقدار ",    
         errorInvalidSymbol: "خطأ: رمز العملة غير صحيح أو غير متاح. الرجاء التأكد من الرمز (مثال: ETH، XRP).",    
         errorNoData: "خطأ: لا توجد بيانات كافية لهذه العملة في الفترة الزمنية المحددة.",    
-        pressureAnalysisUp: "تحليل الضغط: ضغط الشراء أقوى، قد يميل السعر للارتفاع.",    
-        pressureAnalysisDown: "تحليل الضغط: ضغط البيع أقوى، قد يميل السعر للانخفاض.",    
-        pressureAnalysisNeutral: "تحليل الضغط: الشراء والبيع متوازنان تقريبًا.",    
         priceLevel: "مستوى السعر",    
         buyOrders: "أوامر الشراء",    
         sellOrders: "أوامر البيع",    
@@ -190,11 +195,15 @@
         orderbookTitle: "Total Buyers and Sellers (Executed Trades)",    
         openOrdersTitle: "Open Orders (Within ±10% of Current Price)",    
         ratiosTitle: "Buy/Sell Ratio (%)",    
+        oversoldTitle: "Coins at Oversold Line (4 Hours)",    
+        clearOversold: "Clear All",    
+        symbolHeader: "Symbol",    
+        priceHeader: "Current Price",    
+        timestampHeader: "Timestamp",    
         generalTrendTitle: "General Trend",    
         comprehensiveAnalysisTitle: "Comprehensive Analysis",    
         whaleAnalysisTitle: "Whale Movement Analysis",    
         orderBookAnalysisTitle: "Order Book Analysis",    
-        spoofingAlertTitle: "Potential Spoofing Alert",    
         buyPressure: "Buy Pressure: ",    
         sellPressure: "Sell Pressure: ",    
         supply: "Supply: ",    
@@ -226,14 +235,8 @@
         whaleDown: "Whales may push the price down in the next few hours (high volume and strong sell pressure).",    
         noWhaleSignal: "No clear whale movement signals at the moment.",    
         cumulativeDelta: "Cumulative Delta: ",    
-        spoofingWarning: "Warning: Large changes in order book without matching executed trades, possible spoofing!",    
-        analysisPrefix: "Analysis: ",    
-        neededToBalance: "To balance market: Buyers/Sellers need to increase volume by ",    
         errorInvalidSymbol: "Error: Invalid or unavailable symbol. Please check the symbol (e.g., ETH, XRP).",    
         errorNoData: "Error: Not enough data for this symbol in the selected timeframe.",    
-        pressureAnalysisUp: "Pressure Analysis: Stronger buy pressure, price may rise.",    
-        pressureAnalysisDown: "Pressure Analysis: Stronger sell pressure, price may fall.",    
-        pressureAnalysisNeutral: "Pressure Analysis: Buy and sell pressures are nearly balanced.",    
         priceLevel: "Price Level",    
         buyOrders: "Buy Orders",    
         sellOrders: "Sell Orders",    
@@ -252,9 +255,48 @@
       document.getElementById("orderbookTitle").innerText = l.orderbookTitle;    
       document.getElementById("openOrdersTitle").innerText = l.openOrdersTitle;    
       document.getElementById("ratiosTitle").innerText = l.ratiosTitle;    
-      document.getElementById("spoofingAlertTitle").innerText = l.spoofingAlertTitle;    
+      document.getElementById("oversoldTitle").innerText = l.oversoldTitle;    
+      document.getElementById("clearOversoldBtn").innerText = l.clearOversold;    
       document.getElementById("symbol").placeholder = l.example;    
+      updateOversoldTable();    
       fetchChart();    
+    }    
+    
+    async function fetchOversoldEvents() {    
+      try {    
+        const response = await fetch('http://localhost:3000/oversold'); // Replace with your backend URL    
+        if (!response.ok) throw new Error('Failed to fetch oversold events');    
+        oversoldEvents = await response.json();    
+        updateOversoldTable();    
+      } catch (err) {    
+        console.error('Error fetching oversold events:', err);    
+        document.getElementById("error").className = "error";    
+        document.getElementById("error").innerText = isEnglish ? 'Error: Failed to load oversold data.' : 'خطأ: فشل في تحميل بيانات التشبع البيعي.';    
+      }    
+    }    
+    
+    function updateOversoldTable() {    
+      const l = isEnglish ? lang.en : lang.ar;    
+      let table = `<table><tr><th>${l.symbolHeader}</th><th>${l.priceHeader}</th><th>${l.timestampHeader}</th></tr>`;    
+      for (let event of oversoldEvents) {    
+        const date = new Date(event.timestamp).toLocaleString(isEnglish ? 'en-US' : 'ar-SA');    
+        table += `<tr><td>${event.symbol}</td><td>${event.price.toFixed(2)}</td><td>${date}</td></tr>`;    
+      }    
+      table += '</table>';    
+      document.getElementById("oversoldTable").innerHTML = table;    
+    }    
+    
+    async function clearOversoldTable() {    
+      try {    
+        const response = await fetch('http://localhost:3000/oversold/clear', { method: 'POST' }); // Replace with your backend URL    
+        if (!response.ok) throw new Error('Failed to clear oversold events');    
+        oversoldEvents = [];    
+        updateOversoldTable();    
+      } catch (err) {    
+        console.error('Error clearing oversold events:', err);    
+        document.getElementById("error").className = "error";    
+        document.getElementById("error").innerText = isEnglish ? 'Error: Failed to clear oversold data.' : 'خطأ: فشل في مسح بيانات التشبع البيعي.';    
+      }    
     }    
     
     async function fetchChart() {    
@@ -284,8 +326,10 @@
         const previousPrice = chartPrices[chartPrices.length - 2] || currentPrice;    
         const currentVolume = volumes[volumes.length - 1];    
         const avgVolume = volumes.slice(-10).reduce((sum, v) => sum + v, 0) / 10;    
-        const trend = currentPrice > previousPrice ? 'trend-up' : 'trend-down';    
-        const trendText = currentPrice > previousPrice ? (isEnglish ? lang.en.trendUp : lang.ar.trendUp) : (isEnglish ? lang.en.trendDown : lang.ar.trendDown);    
+        const trend = currentPrice > previousPrice ? 'trend-up' : currentPrice < previousPrice ? 'trend-down' : 'trend-neutral';    
+        const trendText = currentPrice > previousPrice ? (isEnglish ? lang.en.trendUp : lang.ar.trendUp) : 
+                          currentPrice < previousPrice ? (isEnglish ? lang.en.trendDown : lang.ar.trendDown) : 
+                          (isEnglish ? lang.en.trendNeutral : lang.ar.trendNeutral);    
     
         document.getElementById("priceLabel").innerHTML = (isEnglish ? lang.en.currentPrice : lang.ar.currentPrice) + currentPrice + ` <span class="${trend}">[${trendText}]</span>`;    
     
@@ -451,10 +495,10 @@
     
     async function fetchOrderBookTotal(pair, currentPrice, previousPrice, currentVolume, avgVolume) {    
       try {    
-        const resOrder = await fetch(`https://api.binance.com/api/v3/depth?symbol=${pair}&limit=100`);    
+        const resOrder = await fetch(`https://api.binance.com/api/v3/depth?symbol=${pair}&limit=1000`);    
         if (!resOrder.ok) throw new Error("Failed to fetch order book");    
         const dataOrder = await resOrder.json();    
-        const resTrades = await fetch(`https://api.binance.com/api/v3/trades?symbol=${pair}&limit=100`);    
+        const resTrades = await fetch(`https://api.binance.com/api/v3/trades?symbol=${pair}&limit=1000`);    
         if (!resTrades.ok) throw new Error("Failed to fetch trades");    
         const dataTrades = await resTrades.json();    
     
@@ -464,7 +508,6 @@
           return;    
         }    
     
-        // Calculate executed trades    
         const totalBuy = dataTrades    
           .filter(t => t.isBuyerMaker === false)    
           .reduce((sum, t) => sum + parseFloat(t.qty), 0);    
@@ -483,15 +526,8 @@
         const sellText = (isEnglish ? "Total Sell Quantity: " : "إجمالي كمية البيع: ") + movingAvgSell.toFixed(2);    
     
         let analysisText = "";    
-        const volumeDiff = Math.abs(movingAvgBuy - movingAvgSell);    
-        if (volumeDiff > 0) {    
-          const neededVolume = volumeDiff * 1.5;    
-          analysisText = `<div class="analysis">${(isEnglish ? lang.en.analysisPrefix : lang.ar.analysisPrefix)}${(isEnglish ? lang.en.neededToBalance : lang.ar.neededToBalance)}${neededVolume.toFixed(2)} ${currentPair.split("USDT")[0]}</div>`;    
-        }    
-    
         document.getElementById("orderbook").innerHTML = `<div class="buy">${buyText}</div><div class="sell">${sellText}</div>${analysisText}`;    
     
-        // Calculate open orders within ±10% of the current price    
         const priceRange = currentPrice * priceRangePercent;    
         const lowerBound = currentPrice - priceRange;    
         const upperBound = currentPrice + priceRange;    
@@ -506,7 +542,6 @@
         const openBuyText = (isEnglish ? "Open Buy Orders: " : "أوامر الشراء المعلقة: ") + openBuyOrders.toFixed(2);    
         const openSellText = (isEnglish ? "Open Sell Orders: " : "أوامر البيع المعلقة: ") + openSellOrders.toFixed(2);    
     
-        // Calculate potential positions and levels    
         const priceStep = priceRange / priceLevels;    
         let buyLevels = Array(priceLevels).fill(0);    
         let sellLevels = Array(priceLevels).fill(0);    
@@ -514,7 +549,6 @@
         let sellPriceLevels = [];    
         let potentialPositions = Array(priceLevels * 2).fill(0);    
     
-        // Calculate buy orders by price level (below current price)    
         for (let i = 0; i < priceLevels; i++) {    
           const levelLowerBound = currentPrice - (i + 1) * priceStep;    
           const levelUpperBound = currentPrice - i * priceStep;    
@@ -523,10 +557,9 @@
             .reduce((sum, bid) => sum + parseFloat(bid[1]), 0);    
           buyLevels[i] = levelBuyOrders;    
           buyPriceLevels[i] = ((levelLowerBound + levelUpperBound) / 2).toFixed(2);    
-          potentialPositions[i] = levelBuyOrders; // Potential buy position    
+          potentialPositions[i] = levelBuyOrders;    
         }    
     
-        // Calculate sell orders by price level (above current price)    
         for (let i = 0; i < priceLevels; i++) {    
           const levelLowerBound = currentPrice + i * priceStep;    
           const levelUpperBound = currentPrice + (i + 1) * priceStep;    
@@ -535,10 +568,9 @@
             .reduce((sum, ask) => sum + parseFloat(ask[1]), 0);    
           sellLevels[i] = levelSellOrders;    
           sellPriceLevels[i] = ((levelLowerBound + levelUpperBound) / 2).toFixed(2);    
-          potentialPositions[priceLevels + i] = -levelSellOrders; // Potential sell position (negative)    
+          potentialPositions[priceLevels + i] = -levelSellOrders;    
         }    
     
-        // Create the table for open orders by price level with potential positions    
         let table = '<table><tr><th>' + (isEnglish ? lang.en.priceLevel : lang.ar.priceLevel) + '</th><th class="buy">' + (isEnglish ? lang.en.buyOrders : lang.ar.buyOrders) + '</th><th class="sell">' + (isEnglish ? lang.en.sellOrders : lang.ar.sellOrders) + '</th><th>' + (isEnglish ? lang.en.potentialPosition : lang.ar.potentialPosition) + '</th></tr>';    
         for (let i = 0; i < priceLevels; i++) {    
           table += `<tr><td>${buyPriceLevels[i]}</td><td class="buy">${buyLevels[i].toFixed(2)}</td><td class="sell">0.00</td><td>${potentialPositions[i].toFixed(2)}</td></tr>`;    
@@ -548,22 +580,11 @@
         }    
         table += '</table>';    
     
-        let pressureAnalysis = "";    
-        const pressureDiff = openBuyOrders - openSellOrders;    
-        if (pressureDiff > 0) {    
-          pressureAnalysis = `<div class="analysis">${(isEnglish ? lang.en.pressureAnalysisUp : lang.ar.pressureAnalysisUp)}</div>`;    
-        } else if (pressureDiff < 0) {    
-          pressureAnalysis = `<div class="analysis">${(isEnglish ? lang.en.pressureAnalysisDown : lang.ar.pressureAnalysisDown)}</div>`;    
-        } else {    
-          pressureAnalysis = `<div class="analysis">${(isEnglish ? lang.en.pressureAnalysisNeutral : lang.ar.pressureAnalysisNeutral)}</div>`;    
-        }    
-    
-        // Detect buy/sell walls    
         let wallAnalysis = "";    
         const maxBuyLevel = Math.max(...buyLevels);    
         const maxSellLevel = Math.max(...sellLevels);    
-        const buyWallThreshold = openBuyOrders * 0.3; // 30% of total buy orders    
-        const sellWallThreshold = openSellOrders * 0.3; // 30% of total sell orders    
+        const buyWallThreshold = openBuyOrders * 0.3;    
+        const sellWallThreshold = openSellOrders * 0.3;    
         if (maxBuyLevel > buyWallThreshold) {    
           const buyWallLevel = buyPriceLevels[buyLevels.indexOf(maxBuyLevel)];    
           wallAnalysis += `<div class="analysis">${(isEnglish ? lang.en.buyWall : lang.ar.buyWall)}${buyWallLevel}</div>`;    
@@ -573,13 +594,11 @@
           wallAnalysis += `<div class="analysis">${(isEnglish ? lang.en.sellWall : lang.ar.sellWall)}${sellWallLevel}</div>`;    
         }    
     
-        document.getElementById("openOrders").innerHTML = `<div class="buy">${openBuyText}</div><div class="sell">${openSellText}</div>${table}${pressureAnalysis}${wallAnalysis}`;    
+        document.getElementById("openOrders").innerHTML = `<div class="buy">${openBuyText}</div><div class="sell">${openSellText}</div>${table}${wallAnalysis}`;    
     
-        // Create or update position chart with price line and horizontal lines for open orders    
         const priceData = chartPrices;    
         const labels = chartLabels;    
     
-        // Create annotations for open order levels    
         let annotations = [];    
         for (let i = 0; i < priceLevels; i++) {    
           if (buyLevels[i] > 0) {    
@@ -679,26 +698,6 @@
           }    
         });    
     
-        // Detect potential spoofing    
-        if (previousOrderBook) {    
-          const prevTotalBuyOrders = previousOrderBook.bids.reduce((sum, b) => sum + parseFloat(b[1]), 0);    
-          const prevTotalSellOrders = previousOrderBook.asks.reduce((sum, a) => sum + parseFloat(a[1]), 0);    
-          const totalBuyOrders = dataOrder.bids.reduce((sum, b) => sum + parseFloat(b[1]), 0);    
-          const totalSellOrders = dataOrder.asks.reduce((sum, a) => sum + parseFloat(a[1]), 0);    
-          const buyChange = Math.abs(totalBuyOrders - prevTotalBuyOrders) / (prevTotalBuyOrders || 1) * 100;    
-          const sellChange = Math.abs(totalSellOrders - prevTotalSellOrders) / (prevTotalSellOrders || 1) * 100;    
-          const totalTradeVolume = movingAvgBuy + movingAvgSell;    
-          const orderChangeThreshold = 50;    
-          const tradeVolumeThreshold = totalTradeVolume * 0.1;    
-    
-          if ((buyChange > orderChangeThreshold || sellChange > orderChangeThreshold) && totalTradeVolume < tradeVolumeThreshold) {    
-            document.getElementById("spoofingAlert").className = "alert-spoofing";    
-            document.getElementById("spoofingAlert").innerText = isEnglish ? lang.en.spoofingWarning : lang.ar.spoofingWarning;    
-          } else {    
-            document.getElementById("spoofingAlert").className = "";    
-            document.getElementById("spoofingAlert").innerText = "";    
-          }    
-        }    
         previousOrderBook = dataOrder;    
     
         const alertDiv = document.getElementById("alert");    
@@ -717,11 +716,11 @@
     }    
     
     async function fetchRatios(pair) {    
-      const intervals = ["1m", "15m", "1h", "4h", "1d"];    
-      let table = '<table><tr><th>' + (isEnglish ? "Interval" : "الفترة") + '</th><th class="buy">' + (isEnglish ? "Buy %" : "شراء %") + '</th><th class="sell">' + (isEnglish ? "Sell %" : "بيع %") + '</th></tr>';    
+      try {    
+        const intervals = ["1m"];    
+        let table = '<table><tr><th>' + (isEnglish ? "Interval" : "الفترة") + '</th><th class="buy">' + (isEnglish ? "Buy %" : "شراء %") + '</th><th class="sell">' + (isEnglish ? "Sell %" : "بيع %") + '</th></tr>';    
     
-      for (let interval of intervals) {    
-        try {    
+        for (let interval of intervals) {    
           const res = await fetch(`https://api.binance.com/api/v1/klines?symbol=${pair}&interval=${interval}&limit=50`);    
           if (!res.ok) continue;    
           const data = await res.json();    
@@ -739,16 +738,17 @@
           const buyRatio = ((buy / total) * 100).toFixed(1);    
           const sellRatio = ((sell / total) * 100).toFixed(1);    
           table += `<tr><td>${interval}</td><td class="buy">${buyRatio}%</td><td class="sell">${sellRatio}%</td></tr>`;    
-        } catch (err) {    
-          console.error(`خطأ في جلب نسب الشراء/البيع لـ ${pair} على فترة ${interval}:`, err);    
         }    
-      }    
     
-      table += '</table>';    
-      document.getElementById("ratios").innerHTML = table;    
+        table += '</table>';    
+        document.getElementById("ratios").innerHTML = table;    
+      } catch (err) {    
+        console.error(`خطأ في جلب نسب الشراء/البيع لـ ${pair}:`, err);    
+      }    
     }    
     
     fetchChart();    
+    fetchOversoldEvents();    
     updateInterval = setInterval(fetchChart, 3000);    
   </script>    
 </body>    
