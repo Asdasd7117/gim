@@ -1,16 +1,12 @@
 const express = require('express');
 const puppeteer = require('puppeteer');
-const path = require('path'); // لإدارة المسارات
+const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// تعريف مجلد public وتقديم الملفات الثابتة
+// تقديم الملفات الثابتة
 app.use(express.static(path.join(__dirname, 'public')));
-
-// عند الوصول للجذر "/"، أرسل index.html
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // API لاستخراج الأزرار
 app.get('/api/buttons', async (req, res) => {
@@ -18,7 +14,10 @@ app.get('/api/buttons', async (req, res) => {
     if (!url) return res.json({ error: "يرجى إدخال رابط." });
 
     try {
-        const browser = await puppeteer.launch({ args: ['--no-sandbox'] });
+        const browser = await puppeteer.launch({
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
         const page = await browser.newPage();
         await page.goto(url, { waitUntil: 'networkidle2' });
 
