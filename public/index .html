@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>استخراج الأزرار</title>
+<style>
+body { font-family: Arial; padding: 20px; }
+input, button { margin: 5px 0; padding: 5px; width: 300px; }
+pre { background: #f4f4f4; padding: 10px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h2>أدخل رابط الموقع لجلب الأزرار</h2>
+<input type="text" id="urlInput" placeholder="https://example.com">
+<button onclick="getButtons()">احصل على الأزرار</button>
+
+<h3>النتيجة:</h3>
+<pre id="result"></pre>
+
+<script>
+async function getButtons() {
+    const url = document.getElementById('urlInput').value;
+    const result = document.getElementById('result');
+    result.textContent = "جارٍ التحميل...";
+    try {
+        const res = await fetch(`/api/buttons?url=${encodeURIComponent(url)}`);
+        const data = await res.json();
+        if(data.error) { result.textContent = data.error; return; }
+        let output = '';
+        data.forEach(btn => {
+            output += `${btn.index}. النص: "${btn.text}" - CSS: ${btn.path}\n`;
+        });
+        result.textContent = output;
+    } catch(err) {
+        result.textContent = "حدث خطأ: " + err;
+    }
+}
+</script>
+</body>
+</html>
