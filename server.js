@@ -1,13 +1,21 @@
 const express = require('express');
 const puppeteer = require('puppeteer');
+const path = require('path'); // لإدارة المسارات
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.static('public')); // ضع index.html داخل مجلد public
+// تعريف مجلد public وتقديم الملفات الثابتة
+app.use(express.static(path.join(__dirname, 'public')));
 
+// عند الوصول للجذر "/"، أرسل index.html
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// API لاستخراج الأزرار
 app.get('/api/buttons', async (req, res) => {
     const url = req.query.url;
-    if(!url) return res.json({ error: "يرجى إدخال رابط." });
+    if (!url) return res.json({ error: "يرجى إدخال رابط." });
 
     try {
         const browser = await puppeteer.launch({ args: ['--no-sandbox'] });
@@ -21,13 +29,13 @@ app.get('/api/buttons', async (req, res) => {
                 const id = el.id ? `#${el.id}` : '';
                 const cls = el.className ? '.' + el.className.trim().replace(/\s+/g, '.') : '';
                 const path = `${el.tagName.toLowerCase()}${id}${cls}`;
-                return { index: index+1, text, path };
+                return { index: index + 1, text, path };
             });
         });
 
         await browser.close();
         res.json(buttons);
-    } catch(err) {
+    } catch (err) {
         res.json({ error: err.message });
     }
 });
