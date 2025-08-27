@@ -16,16 +16,34 @@ app.get('/api/buttons', async (req, res) => {
     try {
         const browser = await puppeteer.launch({
             headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-web-security',
+                '--disable-features=IsolateOrigins,site-per-process',
+                '--window-size=1920,1080'
+            ]
         });
+
         const page = await browser.newPage();
 
-        // تعيين User-Agent لمحاكاة متصفح حقيقي
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.7258.138 Safari/537.36');
+        // تعيين User-Agent حديث
+        await page.setUserAgent(
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
+            'AppleWebKit/537.36 (KHTML, like Gecko) ' +
+            'Chrome/115.0.0.0 Safari/537.36'
+        );
 
-        // زيارة الصفحة مع timeout أطول
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+        // تعيين حجم نافذة
+        await page.setViewport({ width: 1920, height: 1080 });
 
+        // زيارة الصفحة وانتظار DOM
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+
+        // انتظار 3 ثوانٍ إضافية لتشغيل JavaScript
+        await page.waitForTimeout(3000);
+
+        // استخراج الأزرار
         const buttons = await page.evaluate(() => {
             const elems = Array.from(document.querySelectorAll('button, a, [role="button"]'));
             return elems.map((el, index) => {
@@ -39,6 +57,7 @@ app.get('/api/buttons', async (req, res) => {
 
         await browser.close();
         res.json(buttons);
+
     } catch (err) {
         res.json({ error: "تعذر الوصول إلى الموقع. " + err.message });
     }
