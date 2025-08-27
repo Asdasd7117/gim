@@ -19,7 +19,12 @@ app.get('/api/buttons', async (req, res) => {
             args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
         const page = await browser.newPage();
-        await page.goto(url, { waitUntil: 'networkidle2' });
+
+        // تعيين User-Agent لمحاكاة متصفح حقيقي
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.7258.138 Safari/537.36');
+
+        // زيارة الصفحة مع timeout أطول
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
 
         const buttons = await page.evaluate(() => {
             const elems = Array.from(document.querySelectorAll('button, a, [role="button"]'));
@@ -35,7 +40,7 @@ app.get('/api/buttons', async (req, res) => {
         await browser.close();
         res.json(buttons);
     } catch (err) {
-        res.json({ error: err.message });
+        res.json({ error: "تعذر الوصول إلى الموقع. " + err.message });
     }
 });
 
