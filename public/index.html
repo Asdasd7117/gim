@@ -24,13 +24,27 @@ async function getButtons() {
     result.textContent = "جارٍ التحميل...";
     try {
         const res = await fetch(`/api/buttons?url=${encodeURIComponent(url)}`);
-        const data = await res.json();
-        if(data.error) { result.textContent = data.error; return; }
+        const text = await res.text();
+
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch(e) {
+            result.textContent = "تعذر جلب البيانات من الموقع. ربما الموقع يمنع الوصول أو غير متاح.";
+            return;
+        }
+
+        if(data.error) { 
+            result.textContent = data.error; 
+            return; 
+        }
+
         let output = '';
         data.forEach(btn => {
             output += `${btn.index}. النص: "${btn.text}" - CSS: ${btn.path}\n`;
         });
         result.textContent = output;
+
     } catch(err) {
         result.textContent = "حدث خطأ: " + err;
     }
