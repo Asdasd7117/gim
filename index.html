@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>Job CV Generator</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 20px; direction: rtl; }
+  ul { list-style: none; padding: 0; }
+  li { background:#f0f0f0; margin:6px 0; padding:10px; cursor:pointer; }
+  li:hover { background:#e0e0e0; }
+  #result{white-space:pre-wrap;margin-top:20px;border:1px solid #ccc;padding:10px; display:none;}
+  button{margin:6px;}
+</style>
+</head>
+<body>
+
+<h1>قائمة الوظائف</h1>
+<ul id="jobList"></ul>
+
+<div id="result"></div>
+<button id="copyBtn" style="display:none;">نسخ النص</button>
+<button id="openBtn" style="display:none;">فتح الوظيفة</button>
+
+<script>
+const jobs = [
+  { name: "GitLab Careers", url: "https://about.gitlab.com/jobs/" },
+  { name: "Shopify Careers", url: "https://www.shopify.com/careers" },
+  { name: "Microsoft Careers", url: "https://careers.microsoft.com" },
+  { name: "Intuit Careers", url: "https://www.intuit.com/careers" },
+  { name: "Dell Careers", url: "https://jobs.dell.com" },
+  { name: "Amazon Jobs", url: "https://www.amazon.jobs/en/teams/Customer-Service-Remote" },
+  { name: "Automattic Careers", url: "https://automattic.com/work-with-us" },
+  { name: "Zapier Jobs", url: "https://zapier.com/jobs" },
+  { name: "Toptal Careers", url: "https://www.toptal.com/careers" },
+  { name: "Buffer Careers", url: "https://buffer.com/journey" }
+];
+
+const jobList = document.getElementById("jobList");
+const resultDiv = document.getElementById("result");
+const copyBtn = document.getElementById("copyBtn");
+const openBtn = document.getElementById("openBtn");
+let currentJobUrl = "";
+
+// عرض الوظائف
+jobs.forEach(job => {
+  const li = document.createElement("li");
+  li.textContent = job.name;
+  li.onclick = () => generateCV(job.url);
+  jobList.appendChild(li);
+});
+
+async function generateCV(jobUrl) {
+  currentJobUrl = jobUrl;
+  resultDiv.style.display = "block";
+  resultDiv.textContent = "جاري إنشاء CV...";
+
+  try {
+    const prompt = "اكتب CV ورسالة تقديم احترافية للتقديم على هذه الوظيفة: " + jobUrl;
+
+    // إرسال الطلب إلى proxy المحلي
+    const res = await fetch('http://localhost:3000/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: "gpt-3.5-turbo",
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      resultDiv.textContent = "خطأ من الخادم: " + res.status + " — " + errText;
+      return;
+    }
+
+    const data = await res.json();
+    const text = data.choices[0].message.content;
+    resultDiv.textContent = text;
+    copyBtn.style.display = "inline-block";
+    openBtn.style.display = "inline-block";
+
+  } catch (err) {
+    resultDiv.textContent = "خطأ: " + err.message;
+  }
+}
+
+copyBtn.onclick = () => {
+  navigator.clipboard.writeText(resultDiv.textContent);
+  alert("تم نسخ النص");
+};
+
+openBtn.onclick = () => {
+  window.open(currentJobUrl, "_blank");
+};
+</script>
+
+</body>
+</html>
